@@ -129,15 +129,24 @@ with
 
 and typeModel =
     {
+        addressesTypes: Dictionary<term, symbolicType seq>
         mutable classesParams : symbolicType[]
         mutable methodsParams : symbolicType[]
     }
 with
     static member CreateEmpty() =
         {
+            addressesTypes = Dictionary()
             classesParams = Array.empty
             methodsParams = Array.empty
         }
+
+    member x.Item(addr : term) =
+        let types = ref null
+        if x.addressesTypes.TryGetValue(addr, types) then
+            Some types.Value
+        else
+            None
 
 and
     [<ReferenceEquality>]

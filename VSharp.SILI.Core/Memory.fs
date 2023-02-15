@@ -745,7 +745,15 @@ module internal Memory =
         match cm.TryVirtToPhys address, PersistentDict.tryFind state.boxedLocations address with
         | Some value, _ -> objToTerm state typ value
         | None, Some value -> value
-        | _ -> internalfailf "Boxed location %O was not found in heap: this should not happen!" address
+        | _ ->
+            match state.model with
+            | StateModel(_, typeModel) ->
+                let address = ConcreteHeapAddress address
+                match Option.bind Seq.tryHead typeModel[address] with
+                | Some (ConcreteType typ) -> makeDefaultValue typ
+                //TODO: internalfailf description
+                | _ -> internalfailf "Write norm text here!" address
+            | _ -> internalfailf "Write norm text here!!!!" address
 
     let rec readDelegate state reference =
         match reference.term with

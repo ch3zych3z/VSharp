@@ -1130,7 +1130,8 @@ type internal ILInterpreter(isConcolicMode : bool) as this =
 
     member x.CallAbstract targetType (ancestorMethod : Method) cilState k =
         let this = Memory.ReadThis cilState.state ancestorMethod
-        let _, candidateTypes = ResolveCallVirt cilState.state this ancestorMethod
+        let thisType = MostConcreteTypeOfHeapRef cilState.state this
+        let _, candidateTypes = ResolveCallVirt cilState.state this thisType ancestorMethod
         let candidateTypes = List.ofSeq candidateTypes |> List.distinct
         let candidateMethods = seq {
             for t in candidateTypes do

@@ -42,10 +42,13 @@ module API =
     let PerformBinaryOperation op left right k = simplifyBinaryOperation op left right k
     let PerformUnaryOperation op arg k = simplifyUnaryOperation op arg k
 
-    let SolveTypes (model : model) (state : state) = TypeSolver.solveTypes model state
+    let SolveTypes (model : model) (state : state) =
+        match TypeSolver.solveTypes model state with
+        | TypeSat typeModel -> Some (typeModel.classesParams, typeModel.methodsParams)
+        | _ -> None
     let SolveGenericMethodParameters (typeModel : typeModel) (method : IMethod) =
         TypeSolver.solveMethodParameters typeModel method
-    let ResolveCallVirt state thisAddress ancestorMethod = TypeSolver.getCallVirtCandidates state thisAddress ancestorMethod
+    let ResolveCallVirt state thisAddress thisType ancestorMethod = TypeSolver.getCallVirtCandidates state thisAddress thisType ancestorMethod
 
     let mutable private reportError = fun _ _ -> ()
     let reportUnspecifiedError state = reportError state "Unspecified"

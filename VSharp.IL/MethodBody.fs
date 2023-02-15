@@ -188,6 +188,7 @@ type MethodWithBody internal (m : MethodBase) =
         override x.Name = name
         override x.FullName = fullName
         override x.ReturnType = returnType
+        override x.ReflectedType = m.ReflectedType
         override x.DeclaringType = m.DeclaringType
         override x.Parameters = parameters
         override x.LocalVariables = localVariables

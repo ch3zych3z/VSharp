@@ -183,6 +183,15 @@ module TestGenerator =
                 test.SetTypeGenericParameters concreteClassParams mockedClassParams
                 test.SetMethodGenericParameters concreteMethodParams mockedMethodParams
 
+                //TODO: is this needed?
+                // let getConcreteAddress addr =
+                //         match model.Eval addr with
+                //         | {term = ConcreteHeapAddress addr} -> addr
+                //         | {term = HeapRef({term = ConcreteHeapAddress addr}, _)} -> addr
+                //         | _-> __unreachable__()
+                // for entry in typeModel.addressesTypes do
+                //     let addr, types = entry.Key, entry.Value
+                //     modelState.allocatedTypes <- PersistentDict.add (getConcreteAddress addr) (Seq.head types) modelState.allocatedTypes
                 let parametersInfo = m.Parameters
                 if cilState.state.complete then
                     for pi in parametersInfo do
