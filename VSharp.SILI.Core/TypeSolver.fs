@@ -109,7 +109,7 @@ module TypeSolver =
             for assembly in assemblies do
                 yield! assembly.GetExportedTypes() |> Seq.filter validate |> Seq.map ConcreteType
 
-                if supertypes |> Seq.forall (fun t -> (t.IsPublic || t.IsNestedPublic) && ((*TODO: remove it if generic mocks are supported*)t.ContainsGenericParameters |> not)) then
+                if supertypes |> Seq.forall (fun t -> t.IsPublic || t.IsNestedPublic) then
                     yield mock supertypes |> MockType
 
         }
@@ -269,10 +269,12 @@ module TypeSolver =
             t, constraints
         let indep, dep = List.partition isIndependent typeVars
         let getConstraints = List.map parameterConstraints
-        getConstraints indep, [getConstraints dep]
+        //getConstraints indep, [getConstraints dep]
+        [], [getConstraints typeVars]
 
-    let private refineMock getMock constraints mock =
-        if List.isEmpty constraints.subtypes |> not || isContradicting constraints then
+    let private refineMock getMock constraints (mock : ITypeMock) =
+        let mockConstraints = {constraints with supertypes = List.concat [List.ofSeq mock.SuperTypes; constraints.supertypes]}
+        if List.isEmpty constraints.subtypes |> not || isContradicting mockConstraints then
             None
         else
             Some (getMock (Some mock) constraints.supertypes)
@@ -298,7 +300,7 @@ module TypeSolver =
             // TODO: do it lazy way by mock modification
             addressesTypes[address] <- Seq.choose refineType types
             ) refinable
-        rest
+        rest |> List.unzip
 
     let private solveConstraints typesConstraints (getCandidates : _ -> seq<symbolicType>) =
         let rec solveConstraintsRec = function
@@ -401,9 +403,7 @@ module TypeSolver =
         match model with
         | StateModel(modelState, typeModel) ->
             let getMock = getMock state.typeMocks
-            let addresses, constraints =
-                refineModel getMock typeModel addresses constraints
-                |> List.unzip
+            let addresses, constraints = refineModel getMock typeModel addresses constraints
             if dictContainsEmpty typeModel.addressesTypes then TypeUnsat else
                 match solve getMock constraints (Array.append typeGenericArguments methodGenericArguments) with
                 | None -> TypeUnsat
@@ -476,13 +476,14 @@ module TypeSolver =
 
                     let candidates =
                         match refineModel (getMock state.typeMocks) typeModel [thisRef] constraints with
-                        | [] -> typeModel[thisRef].Value
-                        | (_, constraints) :: _ ->
+                        | [], [] -> typeModel[thisRef].Value
+                        | _, constraints :: _ ->
                             match solve (getMock state.typeMocks) [constraints] [||] with
                             | Some (candidates :: _, _) ->
                                 typeModel.addressesTypes[thisRef] <- candidates
                                 candidates
                             | _ -> Seq.empty
+                        | _ -> __unreachable__()
 
                     let overridingMethods = Seq.filter checkOverrides candidates
 
