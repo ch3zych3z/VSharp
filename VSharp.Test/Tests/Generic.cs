@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using IntegrationTests.Typecast;
 using VSharp.Test;
@@ -328,6 +329,65 @@ namespace IntegrationTests
         {
             if (f == null) return 0;
             return f.GetFields();
+        }
+    }
+
+    [TestSvmFixture]
+    public static class GenericCandidates
+    {
+        [TestSvm(100)]
+        public static int Subtyping(object o)
+        {
+            if (o is List<int>)
+                return 2;
+            if (o is Dictionary<int, int>)
+                return 3;
+            return 1;
+        }
+
+        [TestSvm(100)]
+        public static int SubtypingInterface(object o)
+        {
+            if (o is IEnumerable<IMovable>)
+            {
+                if (o is List<Knight>)
+                    return 3;
+                if (o is HashSet<Pawn>)
+                    return 4;
+                if (o is List<Pawn>)
+                    return 5;
+                if (o is HashSet<Knight>)
+                    return 6;
+                if (o is IEnumerable<Piece>)
+                    return 7;
+                return 2;
+            }
+            return 1;
+        }
+
+        [TestSvm(100)]
+        public static int DeepPropagating1(IEnumerable<IMovable> o)
+        {
+            if (o != null)
+            {
+                if (o is ICollection<Knight>)
+                    return 2;
+                return 1;
+            }
+
+            return 0;
+        }
+
+        [TestSvm(100)]
+        public static int DeepPropagating2(object o)
+        {
+            if (o is IEnumerable<KeyValuePair<Piece, int>>)
+            {
+                if (o is Dictionary<Piece, int>)
+                    return 3;
+                return 2;
+            }
+            return 1;
         }
     }
 

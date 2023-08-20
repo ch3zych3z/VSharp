@@ -59,9 +59,11 @@ module public List =
         | [xs] -> Seq.map List.singleton xs
         | xs::xss ->
             seq {
-                for x in xs do
-                    for xs' in cartesian xss do
-                        yield x::xs'
+                let xssCartesian = cartesian xss
+                if Seq.isEmpty xssCartesian |> not then
+                    for x in xs do
+                        for xs' in xssCartesian do
+                            yield x::xs'
             }
         | [] -> Seq.empty
 
@@ -271,3 +273,11 @@ module Array =
                 dest.[i] <- mapper e
                 i <- i + 1
             dest
+
+module Option =
+    let rec public sequenceM f list =
+        let (>>=) x f = Option.bind f x
+        let ret = Some
+        match list with
+        | [] -> ret []
+        | h :: t -> f h >>= (fun h -> sequenceM f t >>= (fun t -> ret (h :: t)))

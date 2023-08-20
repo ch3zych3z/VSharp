@@ -4,6 +4,7 @@ open System
 open System.Collections.Generic
 open VSharp
 open VSharp.Core
+open VSharp.Core.GenericUtils
 open VSharp.Utils
 
 type typeVariables = mappedStack<typeWrapper, Type> * Type list stack
@@ -308,14 +309,14 @@ and typeStorage private (constraints, addressesTypes, typeMocks, classesParams, 
         for entry in addressesTypes do
             let address = entry.Key
             let addressCandidates = entry.Value
-            let changeMock (m : ITypeMock) = 
+            let changeMock (m : ITypeMock) =
                 let superTypes = Seq.toList m.SuperTypes
                 let mock = ref (EmptyTypeMock() :> ITypeMock)
                 if newTypeMocks.TryGetValue(superTypes, mock) then mock.Value
                 else
                     let newMock = m.Copy()
                     newTypeMocks.Add(superTypes, newMock)
-                    newMock 
+                    newMock
             let newCandidates = addressCandidates.Copy(changeMock)
             newAddressesTypes.Add(address, newCandidates)
         typeStorage(newConstraints, newAddressesTypes, newTypeMocks, classesParams, methodsParams)
@@ -334,76 +335,340 @@ and typeStorage private (constraints, addressesTypes, typeMocks, classesParams, 
 
     member x.IsValid with get() = addressesTypes.Count = constraints.Count
 
-and
-    candidates private(publicBuiltInTypes, publicUserTypes, privateUserTypes, privateBuiltInTypes, rest, mock, userAssembly) =
-        let orderedTypes = seq {
-            yield! publicBuiltInTypes
-            yield! publicUserTypes
-            yield! privateUserTypes
-            yield! privateBuiltInTypes
-            yield! rest
+and CandidateGroups = {
+    publicBuiltIn : seq<candidate>
+    publicUser : seq<candidate>
+    privateUser : seq<candidate>
+    privateBuiltIn : seq<candidate>
+    rest : seq<candidate>
+}
+with
+    static member GroupBy (userAssembly : Reflection.Assembly) (items: _ seq) toCandidate toType =
+        let isPublicBuiltIn (t : Type) = TypeUtils.isPublic t && TypeUtils.isBuiltInType t
+        let isPrivateBuiltIn (t: Type) = not (TypeUtils.isPublic t) && TypeUtils.isBuiltInType t
+        let isPublicUser (t: Type) = TypeUtils.isPublic t && t.Assembly = userAssembly
+        let isPrivateUser (t: Type) = not (TypeUtils.isPublic t) && t.Assembly = userAssembly
+        let filteredWith f = items |> Seq.filter (toType >> f)
+
+        let predicates =
+            [isPublicBuiltIn; isPrivateBuiltIn; isPublicUser; isPrivateUser]
+            |> List.map (fun p -> toType >> p >> not)
+
+        let getCandidates p = filteredWith p |> Seq.map toCandidate |> List.ofSeq
+        let publicBuiltIn = getCandidates isPublicBuiltIn
+        let publicUser = getCandidates isPublicUser
+        let privateUser = getCandidates isPrivateUser
+        let privateBuiltIn = getCandidates isPrivateBuiltIn
+        let rest = List.fold (fun candidates pred -> Seq.filter pred candidates) items predicates |> Seq.map toCandidate
+        {
+            publicBuiltIn = publicBuiltIn
+            publicUser = publicUser
+            privateUser = privateUser
+            privateBuiltIn = privateBuiltIn
+            rest = rest
         }
-        
-        new(types : seq<Type> , mock: ITypeMock option, userAssembly : Reflection.Assembly) =
-            let isPublicBuiltIn (t : Type) = TypeUtils.isPublic t && TypeUtils.isBuiltInType t
-            let isPrivateBuiltIn (t: Type) = not (TypeUtils.isPublic t) && TypeUtils.isBuiltInType t
-            let isPublicUser (t: Type) = TypeUtils.isPublic t && t.Assembly = userAssembly
-            let isPrivateUser (t: Type) = not (TypeUtils.isPublic t) && t.Assembly = userAssembly
-            let publicBuiltInTypes = types |> Seq.filter isPublicBuiltIn
-            let privateBuiltInTypes = types |> Seq.filter isPrivateBuiltIn
-            let publicUserTypes = types |> Seq.filter isPublicUser
-            let privateUserTypes = types |> Seq.filter isPrivateUser
-            let predicates = Seq.ofList [isPublicBuiltIn; isPrivateBuiltIn; isPublicUser; isPrivateUser]
-            let rest = Seq.fold (fun types predicate -> Seq.filter (predicate >> not) types) types predicates                      
-            candidates(publicBuiltInTypes, publicUserTypes, privateUserTypes, privateBuiltInTypes, rest, mock, userAssembly)
-            
+
+    member x.Filter shouldBeTaken =
+        let filter = Seq.choose shouldBeTaken
+        {
+            publicBuiltIn = filter x.publicBuiltIn
+            publicUser = filter x.publicUser
+            privateUser = filter x.privateUser
+            privateBuiltIn = filter x.privateBuiltIn
+            rest = filter x.rest
+        }
+
+    member x.Joined =
+        seq {
+            yield! x.publicBuiltIn
+            yield! x.publicUser
+            yield! x.privateUser
+            yield! x.privateBuiltIn
+            yield! x.rest
+        }
+
+and
+    candidates private(typeGroups : CandidateGroups, genericGroups: CandidateGroups, mock, userAssembly) =
+        let orderedCandidates = seq {
+            yield! typeGroups.Joined
+            yield! genericGroups.Joined
+        }
+
+        new(cands : seq<candidate> , mock: ITypeMock option, userAssembly : Reflection.Assembly) =
+            let takeGeneric = function | GenericCandidate c -> Some c | _ -> None
+            let takeNonGeneric = function | Candidate t -> Some t | _ -> None
+
+            let types = cands |> Seq.choose takeNonGeneric
+            let genericTypes = cands |> Seq.choose takeGeneric
+
+            let typeGroups = id |> CandidateGroups.GroupBy userAssembly types Candidate
+            let genericGroups = (fun (gt: genericCandidate) -> gt.Typedef) |> CandidateGroups.GroupBy userAssembly genericTypes GenericCandidate
+
+            candidates(typeGroups, genericGroups, mock, userAssembly)
+
         member x.IsEmpty
             with get() =
                 match mock with
                 | Some _ -> false
                 | None -> Seq.isEmpty x.Types
-            
+
         member x.Types =
             seq {
-                yield! orderedTypes |> Seq.map ConcreteType
+                yield! orderedCandidates |> Seq.collect (fun c -> c.Types) |> Seq.map ConcreteType
                 if mock.IsSome then yield mock.Value |> MockType
             }
-            
+
+        member x.Candidates =
+            orderedCandidates
+
         static member Empty() =
             candidates(Seq.empty, None, typeof<int>.Assembly)
-            
+
         member x.Copy(changeMock: ITypeMock -> ITypeMock) =
-            let newMock =
-                match mock with
-                | Some m -> Some (changeMock m)
-                | None -> None
-            candidates(publicBuiltInTypes, publicUserTypes, privateUserTypes, privateBuiltInTypes, rest, newMock, userAssembly)
-            
+            let newMock = Option.map changeMock mock
+            candidates(typeGroups, genericGroups, newMock, userAssembly)
+
         member x.Pick() =
             Seq.head x.Types
-                
-        member x.Filter(typesPredicate, refineMock : ITypeMock -> ITypeMock option) =
-            let publicBuiltInTypes = Seq.filter typesPredicate publicBuiltInTypes
-            let publicUserTypes = Seq.filter typesPredicate publicUserTypes
-            let privateUserTypes = Seq.filter typesPredicate privateUserTypes
-            let privateBuiltInTypes = Seq.filter typesPredicate privateBuiltInTypes
-            let rest = Seq.filter typesPredicate rest
-            let mock =
-                match mock with
-                | Some typeMock -> refineMock typeMock
-                | None -> None
-            candidates(publicBuiltInTypes, publicUserTypes, privateUserTypes, privateBuiltInTypes, rest, mock, userAssembly)
-            
+
+        member x.Filter shouldBeTaken (refineMock : ITypeMock -> ITypeMock option) =
+            let types = typeGroups.Filter shouldBeTaken
+            let generics = genericGroups.Filter shouldBeTaken
+            let mock = Option.bind refineMock mock
+            candidates(types, generics, mock, userAssembly)
+
         member x.Take(count) =
             let types =
                 match mock with
                 | Some _ ->
                     seq {
-                         yield! Seq.truncate (count - 1) orderedTypes
+                         yield! Seq.truncate (count - 1) orderedCandidates
                     }
-                | None -> Seq.truncate count orderedTypes
+                | None -> Seq.truncate count orderedCandidates
             candidates(types, mock, userAssembly)
-    
+
+        member x.With(types: symbolicType seq) =
+            let folder (cands, mock) =
+                function
+                    | ConcreteType t -> (Seq.cons <| Candidate t <| cands, mock)
+                    | MockType m -> (cands, Some m)
+            let cands, mock = Seq.fold folder (Seq.empty, None) types
+            candidates(cands, mock, userAssembly)
+
+and candidate =
+    | GenericCandidate of genericCandidate
+    | Candidate of Type
+with
+    member x.IsAbstract =
+        match x with
+        | Candidate t -> t.IsAbstract
+        | GenericCandidate gc -> gc.Typedef.IsAbstract
+
+    member x.TypeDef =
+        match x with
+        | Candidate t -> t
+        | GenericCandidate gc -> gc.Typedef
+
+    member x.Types =
+        match x with
+        | Candidate t -> Seq.singleton t
+        | GenericCandidate gc -> gc.Types
+
+    member x.Copy() =
+        match x with
+        | Candidate _ as c -> c
+        | GenericCandidate gc -> gc.Copy() |> GenericCandidate
+and parameterSubstitutions private (
+    parameters,
+    layers,
+    maxDepths: Dictionary<Type, int>,
+    parameterConstraints: Dictionary<Type, typeConstraints>,
+    depth,
+    getCandidates,
+    unrollCandidateSubstitutions: seq<pdict<Type,candidate>> -> seq<pdict<Type,Type>>,
+    satisfiesConstraints,
+    makeGenericCandidate: Type -> int -> genericCandidate option) =
+
+    let updateConstraints parameterConstraints =
+        parameterSubstitutions(
+            parameters,
+            layers,
+            maxDepths,
+            parameterConstraints,
+            depth,
+            getCandidates,
+            unrollCandidateSubstitutions,
+            satisfiesConstraints,
+            makeGenericCandidate
+            )
+
+    let makeGeneric param typ =
+        let depth = depth - maxDepths[param]
+        if depth <= 1 then None
+        else depth - 1 |> makeGenericCandidate typ
+
+    let processLayer (substs: parameterSubstitution seq) layer =
+        let paramCandidates subst param =
+            let candidates: candidates = makeGeneric param |> getCandidates
+            let filtered = candidates.Filter (satisfiesConstraints subst parameterConstraints[param] param) (fun _ -> None)
+            filtered.Candidates
+        seq {
+            for subst in substs do
+                yield!
+                    layer
+                    |> List.ofSeq
+                    |> List.map (paramCandidates subst)
+                    |> List.cartesian
+                    |> Seq.map (Seq.zip layer >> PersistentDict.ofSeq)
+                    |> unrollCandidateSubstitutions
+                    |> Seq.map (PersistentDict.fold (fun dict k v -> PersistentDict.add k v dict) subst)
+        }
+
+    let args: parameterSubstitution seq =
+        layers |> Seq.fold processLayer (Seq.singleton PersistentDict.empty)
+
+    static member Create parameters depth getCandidates unrollCandidateSubstitutions satisfiesConstraints makeGenericCandidate =
+        let layers, maxDepths, isCycled = makeLayers parameters
+        if isCycled || depth <= 0 then None
+        else
+            let parameterConstraints =
+                parameters
+                |> Array.map (fun p -> KeyValuePair(p, typeConstraints.Empty()))
+                |> Dictionary
+            parameterSubstitutions(
+                parameters,
+                layers,
+                maxDepths,
+                parameterConstraints,
+                depth,
+                getCandidates,
+                unrollCandidateSubstitutions,
+                satisfiesConstraints,
+                makeGenericCandidate
+                )
+            |> Some
+
+    member x.AddConstraints (newConstraints: Dictionary<Type, typeConstraints>) =
+        let mergeConstraints (kv: KeyValuePair<Type, typeConstraints>) =
+            let param = kv.Key
+            let constraints = kv.Value.Copy()
+            newConstraints[param] |> constraints.Merge |> ignore
+            KeyValuePair(param, constraints)
+
+        let newParameterConstraints =
+            parameterConstraints
+            |> Seq.map mergeConstraints
+            |> Dictionary
+        updateConstraints newParameterConstraints
+    member val Substitutions = args
+
+and genericCandidate private (
+    typedef: Type,
+    depth,
+    parameterSubstitutions: parameterSubstitutions,
+    selfConstraints,
+    satisfiesConstraints) =
+
+    do
+        assert (depth >= 0)
+        assert (typedef.IsGenericTypeDefinition)
+
+    let parameters = typedef.GetGenericArguments()
+    let interfaces = typedef.GetInterfaces()
+    let interfacesDefs = interfaces |> Array.map TypeUtils.getTypeDef
+    let genericInterfaces = interfaces |> Array.filter (fun t -> t.IsGenericType)
+    let supertypes = TypeUtils.getSupertypes typedef
+    let supertypesDefs = supertypes |> List.map TypeUtils.getTypeDef
+    let propagateConstraints (constraints: typeConstraints) =
+        propagate typedef supertypesDefs parameters genericInterfaces constraints.supertypes constraints.subtypes
+
+    let propagateNotConstraints (constraints: typeConstraints) =
+        let filterSingleParametered = List.filter (fun (t: Type) -> t.IsGenericType && t.GetGenericArguments().Length = 1)
+        let notSupertypes = filterSingleParametered constraints.notSupertypes
+        let notSubtypes = filterSingleParametered constraints.notSubtypes
+        propagateNotConstraints typedef supertypesDefs parameters genericInterfaces notSupertypes notSubtypes
+
+    let types =
+        parameterSubstitutions.Substitutions
+        |> Seq.map (substitute typedef)
+
+    static member Create (typedef: Type) depth (getCandidates: _ -> candidates) unrollCandidateSubstitutions satisfiesParameterConstraints satisfiesConstraints =
+        if depth <= 0 then None
+        else
+            option {
+                let makeGenericCandidate t d =
+                    genericCandidate.Create t d getCandidates unrollCandidateSubstitutions satisfiesParameterConstraints satisfiesConstraints
+                let parameters = typedef.GetGenericArguments()
+                let! paramSubsts = parameterSubstitutions.Create parameters depth getCandidates unrollCandidateSubstitutions satisfiesParameterConstraints makeGenericCandidate
+                let selfConstraints = typeConstraints.Empty()
+                return genericCandidate(typedef, depth, paramSubsts, selfConstraints, satisfiesConstraints)
+            }
+
+    member x.AddConstraints constraints =
+        if List.isEmpty constraints.supertypes |> not then
+            ()
+        let selfConstraints = selfConstraints.Copy()
+        selfConstraints.Merge constraints |> ignore
+
+        let isSupertypeValid interfacesDefs supertypesDefs (supertype: Type) =
+            let supertypeDef = TypeUtils.getTypeDef supertype
+            if supertypeDef.IsInterface then Array.contains supertypeDef interfacesDefs
+            else List.contains supertypeDef supertypesDefs
+
+        let mutable newIsEmptied = false
+
+        let isSubtypeValid (subtype: Type) =
+            if subtype.IsInterface then
+                newIsEmptied <- true
+            let supertypesDefs = TypeUtils.getSupertypes subtype |> List.map TypeUtils.getTypeDef
+            isSupertypeValid [||] supertypesDefs typedef
+
+        newIsEmptied <-
+            constraints.supertypes |> List.forall (isSupertypeValid interfacesDefs supertypesDefs) |> not ||
+            constraints.subtypes |> List.forall isSubtypeValid |> not
+
+        if newIsEmptied then None
+        else
+            let fromNotInterfaces, fromNotSupertypes, fromNotSubtypes = propagateNotConstraints constraints
+            propagateConstraints constraints |> Option.map (fun (fromInterfaces, fromSupertypes, fromSubtypes) ->
+                let parameterConstraints = Dictionary<Type, typeConstraints>()
+                for i = 0 to parameters.Length - 1 do
+                    let item (arr: _ array) = arr[i]
+                    let fromSupertypes = fromSupertypes |> List.map item
+                    let fromSubtypes = fromSubtypes |> List.map item
+                    let toSupertypes, toSubtypes = fromInterfaces |> List.map item |> List.unzip
+                    let fromClasses = fromSubtypes @ fromSupertypes |> List.concat
+                    let toSupertypes, toSubtypes = List.concat toSupertypes, List.concat toSubtypes
+
+                    let fromNotSupertypes = fromNotSupertypes |> List.map item
+                    let fromNotSubtypes = fromNotSubtypes |> List.map item
+                    let toNotSupertypes, toNotSubtypes = fromNotInterfaces |> List.map item |> List.unzip
+                    let fromNotClasses = fromNotSubtypes @ fromNotSupertypes |> List.concat
+                    let toNotSupertypes, toNotSubtypes = List.concat toNotSupertypes, List.concat toNotSubtypes
+
+                    let constraints =
+                        typeConstraints.Create
+                            (fromClasses @ toSupertypes)
+                            (fromClasses @ toSubtypes)
+                            (fromNotClasses @ toNotSupertypes)
+                            (fromNotClasses @ toNotSubtypes)
+                    parameterConstraints.Add(parameters[i], constraints)
+                let newParameterSubstitutions = parameterSubstitutions.AddConstraints parameterConstraints
+                genericCandidate(typedef, depth, newParameterSubstitutions, selfConstraints, satisfiesConstraints))
+
+    member val Typedef = typedef
+
+    member val Types =
+        types
+        |> Seq.truncate 1000 // TODO: make another way to prevent long iteration through types
+        |> Seq.filter (satisfiesConstraints selfConstraints)
+
+    member x.IsEmpty = Seq.isEmpty x.Types
+
+    member x.Copy() =
+        let copiedSelfConstraints = selfConstraints.Copy()
+        genericCandidate(typedef, depth, parameterSubstitutions, copiedSelfConstraints, satisfiesConstraints)
+
 and
     [<ReferenceEquality>]
     state = {
