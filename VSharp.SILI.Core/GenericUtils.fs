@@ -7,12 +7,8 @@ open VSharp
 type parameterSubstitution = pdict<Type, Type>
 
 let substitute (typedef: Type) (subst: parameterSubstitution) =
-    if typedef.IsGenericTypeDefinition then
-        let args =
-            typedef.GetGenericArguments()
-            |> Array.map (PersistentDict.find subst)
-        typedef.MakeGenericType args
-    else typedef
+    let substitute t = PersistentDict.tryFind subst t |> Option.defaultValue t
+    Reflection.concretizeType substitute typedef
 
 let private collectDependencies parameters =
     let rec folder (acc, depth) t =
@@ -59,17 +55,18 @@ let private refineMaxDepths (dependencies: Dictionary<Type, Type list>) (maxDept
         newMaxDepths.Add(t, -1)
         let mutable maxDepth = 0
         for dep in dependencies[t] do
-            if newMaxDepths.ContainsKey t then
-                if newMaxDepths[t] = -1 then isCycled <- true
+            if newMaxDepths.ContainsKey dep then
+                if newMaxDepths[dep] = -1 then isCycled <- true
                 else
-                    maxDepth <- newMaxDepths[t] + maxDepths[t] |> max maxDepth
+                    maxDepth <- newMaxDepths[dep] + maxDepths[dep] |> max maxDepth
             else
                 maxDepth <- dfs dep |> max maxDepth
         newMaxDepths[t] <- maxDepth
         newMaxDepths[t] + maxDepths[t]
 
     for entry in dependencies do
-        dfs entry.Key |> ignore
+        if newMaxDepths.ContainsKey(entry.Key) |> not then
+            dfs entry.Key |> ignore
     newMaxDepths, isCycled
 
 let layerDependencies (dependencies: Dictionary<Type, Type list>) (counts: Dictionary<Type, int>) =
@@ -118,10 +115,18 @@ let private trackIndices (typ: Type) (supertype: Type) =
 
 let makeLayers parameters =
     let dependencies, maxDepths = collectDependencies parameters
+    for entry in dependencies do
+        let param, deps = entry.Key, entry.Value
+        dependencies[param] <- List.distinct deps
     let revDeps, counts = reverseDependencies dependencies
     let maxDepths, isCycled = refineMaxDepths revDeps maxDepths
     let layers = if isCycled then Seq.empty else layerDependencies revDeps counts
     layers, maxDepths, isCycled
+
+let splitByDependence (parameters: Type array) =
+    let dependencies, _ = collectDependencies parameters
+    let _, counts = reverseDependencies dependencies
+    parameters |> Array.partition (fun p -> counts[p] = 0)
 
 let rec propagateInterface parameters (interfaces: Type array) (supertype : Type) =
     let supertypeDef = TypeUtils.getTypeDef supertype

@@ -605,8 +605,6 @@ and genericCandidate private (
             }
 
     member x.AddConstraints constraints =
-        if List.isEmpty constraints.supertypes |> not then
-            ()
         let selfConstraints = selfConstraints.Copy()
         selfConstraints.Merge constraints |> ignore
 

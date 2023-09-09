@@ -27,6 +27,12 @@ namespace IntegrationTests
         }
     }
 
+    public interface IGenericInterface1<out T> {}
+
+    public interface IGenericInterface2<out T> {}
+
+    public class BothGenericInterface<T> : IGenericInterface1<T>, IGenericInterface2<T> {}
+
     [TestSvmFixture]
     public static class GenericInitialize<T, U, P, K, N, Z>
         where T : U
@@ -388,6 +394,56 @@ namespace IntegrationTests
                 return 2;
             }
             return 1;
+        }
+
+        [TestSvm(100)]
+        public static int DeepPropagating3(IGenericInterface1<IMovable> o)
+        {
+            if (o is IGenericInterface2<Knight>)
+                return 2;
+            return 1;
+        }
+    }
+
+    [TestSvmFixture]
+    public static class MockRelocation<T, U> where T: unmanaged, IEquatable<U>
+    {
+        [TestSvm(100)]
+        public static bool Contains(List<T> list, U value)
+        {
+            return true;
+        }
+    }
+
+    [TestSvmFixture]
+    public static class MethodParameters
+    {
+
+        [TestSvmFixture]
+        public static class MethodParameters1<T>
+            where T : IEnumerable<int>
+        {
+            [TestSvm(100)]
+            public static int Method() => 1;
+        }
+
+        [TestSvmFixture]
+        public static class MethodParameters2<T, U>
+            where T : IEnumerable<IEnumerable<U>>
+        {
+            [TestSvm(100)]
+            public static int Method() => 1;
+        }
+
+        [TestSvmFixture]
+        public static class MethodParameters3<T, U>
+            where T : IGenericInterface1<U>, IGenericInterface2<U>
+        {
+            [TestSvm(100)]
+            public static int Method()
+            {
+                return 1;
+            }
         }
     }
 
