@@ -592,14 +592,14 @@ and genericCandidate private (
         parameterSubstitutions.Substitutions
         |> Seq.map (substitute typedef)
 
-    static member Create (typedef: Type) depth (getCandidates: _ -> candidates) unrollCandidateSubstitutions satisfiesParameterConstraints satisfiesConstraints =
+    static member Create (typedef: Type) depth makeSubstitution satisfiesConstraints =
         if depth <= 0 then None
         else
             option {
                 let makeGenericCandidate t d =
-                    genericCandidate.Create t d getCandidates unrollCandidateSubstitutions satisfiesParameterConstraints satisfiesConstraints
+                    genericCandidate.Create t d makeSubstitution satisfiesConstraints
                 let parameters = typedef.GetGenericArguments()
-                let! paramSubsts = parameterSubstitutions.Create parameters depth getCandidates unrollCandidateSubstitutions satisfiesParameterConstraints makeGenericCandidate
+                let! paramSubsts = makeSubstitution parameters depth makeGenericCandidate
                 let selfConstraints = typeConstraints.Empty()
                 return genericCandidate(typedef, depth, paramSubsts, selfConstraints, satisfiesConstraints)
             }
@@ -610,13 +610,13 @@ and genericCandidate private (
 
         let isSupertypeValid interfacesDefs supertypesDefs (supertype: Type) =
             let supertypeDef = TypeUtils.getTypeDef supertype
-            if supertypeDef.IsInterface then Array.contains supertypeDef interfacesDefs
+            if supertypeDef.IsInterface && not typedef.IsInterface then Array.contains supertypeDef interfacesDefs
             else List.contains supertypeDef supertypesDefs
 
         let mutable newIsEmptied = false
 
         let isSubtypeValid (subtype: Type) =
-            if subtype.IsInterface then
+            if subtype.IsInterface && not typedef.IsInterface then
                 newIsEmptied <- true
             let supertypesDefs = TypeUtils.getSupertypes subtype |> List.map TypeUtils.getTypeDef
             isSupertypeValid [||] supertypesDefs typedef

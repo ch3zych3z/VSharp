@@ -124,6 +124,8 @@ module private CandidateUtils =
                 then Some c
                 else None
             | GenericCandidate genericCandidate ->
+                if genericCandidate.Typedef.GetGenericArguments().Length = 1 && genericCandidate.Typedef.IsInterface && genericCandidate.Typedef.Assembly <> typeof<int>.Assembly then
+                    ()
                 let constraints = constraints.Copy()
                 parameter.GetGenericParameterConstraints()
                 |> Array.iter (substitute subst >> constraints.AddSuperType)
@@ -155,7 +157,7 @@ type typeSolvingResult =
 module TypeSolver =
 
     let mutable private userAssembly = None
-    let genericSolvingDepth = 2
+    let genericSolvingDepth = 3
     type private substitution = pdict<Type, symbolicType>
 
     let getAssemblies() =
@@ -251,6 +253,8 @@ module TypeSolver =
             if satisfiesConstraints constraints subst t then Some c
             else None
         | GenericCandidate gc ->
+            if gc.Typedef = typedefof<List<int>> && constraints.supertypes.Length > 0 then
+                ()
             gc.AddConstraints constraints |> Option.map GenericCandidate
 
     let private typeCandidates getMock subst constraints makeGenericCandidates =
@@ -278,7 +282,7 @@ module TypeSolver =
             | t :: _ ->
                  enumerateNonAbstractSupertypes validate t
 
-    let private typeParameterCandidatesWithGeneric getMock subst (parameter : Type) (constraints : typeConstraints) makeGenericCandidates =
+    let private typeParameterCandidatesWithGeneric getMock subst (constraints : typeConstraints) makeGenericCandidates =
         match constraints.supertypes |> List.tryFind (fun t -> t.IsSealed) with
         | Some t ->
             if TypeUtils.isDelegate t then
@@ -291,7 +295,10 @@ module TypeSolver =
                 if t.IsGenericTypeDefinition then
                     t |> makeGenericCandidates |> Option.map GenericCandidate
                 else Candidate t |> Some
-            let validate t = Option.bind <| chooseCandidate constraints subst <| makeCandidates t
+            let validate t =
+                if t <> typeof<Void> then
+                    Option.bind <| chooseCandidate constraints subst <| makeCandidates t
+                else None
 
             match constraints.subtypes with
             | [] ->
@@ -337,16 +344,14 @@ module TypeSolver =
                 mock
             | Some _  -> __unreachable__()
 
-    let private makeGenericCandidate (typedef: Type) depth =
+    let private makeParameterSubstitutions (parameters: Type[]) depth makeGenericCandidate =
         let getMock = Dictionary() |> getMock
-        let getCandidates = typeConstraints.Empty() |> typeCandidates getMock PersistentDict.empty
-        let satisfiesConstraints constraints = satisfiesConstraints constraints PersistentDict.empty
-        genericCandidate.Create typedef depth getCandidates CandidateUtils.unrollCandidateSubstitution CandidateUtils.satisfiesTypeParameterConstraints satisfiesConstraints
-
-    let private makeParameterSubstitutions (parameters: Type[]) depth =
-        let getMock = Dictionary() |> getMock
-        let getCandidates = typeConstraints.Empty() |> typeCandidates getMock PersistentDict.empty
+        let getCandidates = typeConstraints.Empty() |> typeParameterCandidatesWithGeneric getMock PersistentDict.empty
         parameterSubstitutions.Create parameters depth getCandidates CandidateUtils.unrollCandidateSubstitution CandidateUtils.satisfiesTypeParameterConstraints makeGenericCandidate
+
+    let private makeGenericCandidate (typedef: Type) depth =
+        let satisfiesConstraints constraints = satisfiesConstraints constraints PersistentDict.empty
+        genericCandidate.Create typedef depth makeParameterSubstitutions satisfiesConstraints
 
     let private refineMock getMock constraints (mock : ITypeMock) =
         let constraintsSuperTypes = constraints.supertypes
@@ -416,7 +421,7 @@ module TypeSolver =
             }
 
         let substs =
-            match makeParameterSubstitutions typeParameters genericSolvingDepth with
+            match makeParameterSubstitutions typeParameters genericSolvingDepth makeGenericCandidate with
             | Some substs -> substs.Substitutions |> Seq.map (PersistentDict.map id ConcreteType)
             | None -> Seq.empty
         let bfSubsts =

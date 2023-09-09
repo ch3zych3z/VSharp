@@ -216,11 +216,17 @@ and propagate typedef supertypesDefs parameters interfaces (supertypes: Type lis
         let sptInterfaces, supertypes = supertypes |> List.partition (fun t -> t.IsInterface)
         let sbtInterfaces, subtypes = subtypes |> List.partition (fun t -> t.IsInterface)
 
-        let! fromInterfaces = sptInterfaces |> List.map (propagateInterface parameters interfaces) |> Option.sequenceM id
-        let! fromSupertypes = supertypes |> List.map (propagateSupertype typedef supertypesDefs) |> Option.sequenceM id
-        let! fromSubtypes = subtypes |> List.map (propagateSubtype typedef parameters) |> Option.sequenceM id
-        if List.isEmpty sbtInterfaces |> not then return! None
-        else return fromInterfaces, fromSupertypes, fromSubtypes
+        if typedef.IsInterface then
+            let! fromSupertypes = sptInterfaces |> List.map (propagateSupertype typedef supertypesDefs) |> Option.sequenceM id
+            let! fromSubtypes = sbtInterfaces |> List.map (propagateSubtype typedef parameters) |> Option.sequenceM id
+            if List.isEmpty supertypes |> not then return! None
+            else return [], fromSupertypes, fromSubtypes
+        else
+            let! fromInterfaces = sptInterfaces |> List.map (propagateInterface parameters interfaces) |> Option.sequenceM id
+            let! fromSupertypes = supertypes |> List.map (propagateSupertype typedef supertypesDefs) |> Option.sequenceM id
+            let! fromSubtypes = subtypes |> List.map (propagateSubtype typedef parameters) |> Option.sequenceM id
+            if List.isEmpty sbtInterfaces |> not then return! None
+            else return fromInterfaces, fromSupertypes, fromSubtypes
     }
 
 let propagateNotSupertype typedef supertypes (notSupertype: Type) =
