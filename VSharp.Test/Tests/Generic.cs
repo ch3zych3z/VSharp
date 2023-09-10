@@ -31,6 +31,8 @@ namespace IntegrationTests
 
     public interface IGenericInterface2<out T> { }
 
+    public interface IInterface2<out T, out U> { }
+
     public class BothGenericInterface<T> : IGenericInterface1<T>, IGenericInterface2<T>
         where T: class
     { }
@@ -417,6 +419,30 @@ namespace IntegrationTests
         }
 
         [TestSvm(100)]
+        public static int NoSolution1(object o)
+        {
+            if (o is IEnumerable<int>)
+            {
+                if (o is List<Knight>)
+                    return 3;
+                return 2;
+            }
+            return 1;
+        }
+
+        [TestSvm(100)]
+        public static int NoSolution2(object o)
+        {
+            if (o is IInterface2<IMovable, object>)
+            {
+                if (o is IInterface2<Piece, object>)
+                    return 3;
+                return 2;
+            }
+            return 1;
+        }
+
+        [TestSvm(100)]
         public static int Nested1(object o)
         {
             if (o is IEnumerable<object>)
@@ -425,8 +451,16 @@ namespace IntegrationTests
                 {
                     if (o is IEnumerable<IEnumerable<IEnumerable<object>>>)
                     {
-                        if (o is List<List<List<List<object>>>>)
-                            return 228;
+                        if (o is IEnumerable<IEnumerable<IEnumerable<IEnumerable<object>>>>)
+                        {
+                            if (o is IEnumerable<IEnumerable<IEnumerable<IEnumerable<IEnumerable<object>>>>>)
+                            {
+                                if (o is List<List<List<List<List<List<List<List<object>>>>>>>>)
+                                    return 228;
+                                return 6;
+                            }
+                            return 5;
+                        }
                         return 4;
                     }
                     return 3;
