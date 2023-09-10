@@ -487,7 +487,8 @@ and parameterSubstitutions private (
     getCandidates,
     unrollCandidateSubstitutions: seq<pdict<Type,candidate>> -> seq<pdict<Type,Type>>,
     satisfiesConstraints,
-    makeGenericCandidate: Type -> int -> genericCandidate option) =
+    makeGenericCandidate: Type -> int -> genericCandidate option,
+    childDepth) =
 
     let updateConstraints parameterConstraints =
         parameterSubstitutions(
@@ -499,13 +500,13 @@ and parameterSubstitutions private (
             getCandidates,
             unrollCandidateSubstitutions,
             satisfiesConstraints,
-            makeGenericCandidate
-            )
+            makeGenericCandidate,
+            childDepth)
 
     let makeGeneric param typ =
-        let depth = depth - maxDepths[param]
-        if depth <= 1 then None
-        else depth - 1 |> makeGenericCandidate typ
+        let depth = childDepth param maxDepths depth
+        if depth <= 0 then None
+        else makeGenericCandidate typ depth
 
     let processLayer (substs: parameterSubstitution seq) layer =
         let paramCandidates subst param =
@@ -527,7 +528,7 @@ and parameterSubstitutions private (
     let args: parameterSubstitution seq =
         layers |> Seq.fold processLayer (Seq.singleton PersistentDict.empty)
 
-    static member Create parameters depth getCandidates unrollCandidateSubstitutions satisfiesConstraints makeGenericCandidate =
+    static member Create parameters depth getCandidates unrollCandidateSubstitutions satisfiesConstraints makeGenericCandidate childDepth =
         let layers, maxDepths, isCycled = makeLayers parameters
         if isCycled || depth <= 0 then None
         else
@@ -544,8 +545,8 @@ and parameterSubstitutions private (
                 getCandidates,
                 unrollCandidateSubstitutions,
                 satisfiesConstraints,
-                makeGenericCandidate
-                )
+                makeGenericCandidate,
+                childDepth)
             |> Some
 
     member x.AddConstraints (newConstraints: Dictionary<Type, typeConstraints>) =

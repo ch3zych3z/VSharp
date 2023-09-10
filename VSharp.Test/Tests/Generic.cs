@@ -27,11 +27,15 @@ namespace IntegrationTests
         }
     }
 
-    public interface IGenericInterface1<out T> {}
+    public interface IGenericInterface1<out T> { }
 
-    public interface IGenericInterface2<out T> {}
+    public interface IGenericInterface2<out T> { }
 
-    public class BothGenericInterface<T> : IGenericInterface1<T>, IGenericInterface2<T> {}
+    public class BothGenericInterface<T> : IGenericInterface1<T>, IGenericInterface2<T>
+        where T: class
+    { }
+
+    public sealed class Sealed<T> { }
 
     [TestSvmFixture]
     public static class GenericInitialize<T, U, P, K, N, Z>
@@ -400,6 +404,41 @@ namespace IntegrationTests
         public static int DeepPropagating3(IGenericInterface1<IMovable> o)
         {
             if (o is IGenericInterface2<Knight>)
+                return 2;
+            return 1;
+        }
+
+        [TestSvm(100)]
+        public static int StandaloneInterface(object o)
+        {
+            if (o is List<IGenericInterface2<int>>)
+                return 2;
+            return 1;
+        }
+
+        [TestSvm(100)]
+        public static int Nested1(object o)
+        {
+            if (o is IEnumerable<object>)
+            {
+                if (o is IEnumerable<IEnumerable<object>>)
+                {
+                    if (o is IEnumerable<IEnumerable<IEnumerable<object>>>)
+                    {
+                        if (o is List<List<List<List<object>>>>)
+                            return 228;
+                        return 4;
+                    }
+                    return 3;
+                }
+                return 2;
+            }
+            return 1;
+        }
+        [TestSvm(100)]
+        public static int Nested2(object o)
+        {
+            if (o is Sealed<Sealed<Sealed<Sealed<Sealed<Sealed<int>>>>>>)
                 return 2;
             return 1;
         }

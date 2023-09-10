@@ -157,7 +157,7 @@ type typeSolvingResult =
 module TypeSolver =
 
     let mutable private userAssembly = None
-    let genericSolvingDepth = 3
+    let genericSolvingDepth = 2
     type private substitution = pdict<Type, symbolicType>
 
     let getAssemblies() =
@@ -344,14 +344,16 @@ module TypeSolver =
                 mock
             | Some _  -> __unreachable__()
 
-    let private makeParameterSubstitutions (parameters: Type[]) depth makeGenericCandidate =
+    let private makeParameterSubstitutions childDepth (parameters: Type[]) depth makeGenericCandidate =
         let getMock = Dictionary() |> getMock
         let getCandidates = typeConstraints.Empty() |> typeParameterCandidatesWithGeneric getMock PersistentDict.empty
-        parameterSubstitutions.Create parameters depth getCandidates CandidateUtils.unrollCandidateSubstitution CandidateUtils.satisfiesTypeParameterConstraints makeGenericCandidate
+        parameterSubstitutions.Create parameters depth getCandidates CandidateUtils.unrollCandidateSubstitution CandidateUtils.satisfiesTypeParameterConstraints makeGenericCandidate childDepth
 
     let private makeGenericCandidate (typedef: Type) depth =
         let satisfiesConstraints constraints = satisfiesConstraints constraints PersistentDict.empty
-        genericCandidate.Create typedef depth makeParameterSubstitutions satisfiesConstraints
+        let childDepth _ (maxDepths: Dictionary<_, _>) _ =
+            maxDepths.Values |> Seq.max |> max genericSolvingDepth
+        genericCandidate.Create typedef depth (makeParameterSubstitutions childDepth) satisfiesConstraints
 
     let private refineMock getMock constraints (mock : ITypeMock) =
         let constraintsSuperTypes = constraints.supertypes
@@ -419,9 +421,10 @@ module TypeSolver =
                     for t in candidates.Types do
                         yield PersistentDict.add p t subst
             }
+        let childDepth param (maxDepths: Dictionary<_, _>) depth = depth - maxDepths[param] - 1
 
         let substs =
-            match makeParameterSubstitutions typeParameters genericSolvingDepth makeGenericCandidate with
+            match makeParameterSubstitutions childDepth typeParameters genericSolvingDepth makeGenericCandidate with
             | Some substs -> substs.Substitutions |> Seq.map (PersistentDict.map id ConcreteType)
             | None -> Seq.empty
         let bfSubsts =
