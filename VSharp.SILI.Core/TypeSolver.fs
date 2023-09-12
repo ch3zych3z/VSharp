@@ -105,6 +105,7 @@ module private CandidateUtils =
         let substitute subst t = substitute t subst
         match candidate with
         | Candidate candidate as c ->
+            // TODO: [style] unify with 'satisfiesTypeParameterConstraints' #SLAVA
             let (&&&) = Microsoft.FSharp.Core.Operators.(&&&)
             let specialConstraints = parameter.GenericParameterAttributes &&& GenericParameterAttributes.SpecialConstraintMask
             let isReferenceType = specialConstraints &&& GenericParameterAttributes.ReferenceTypeConstraint = GenericParameterAttributes.ReferenceTypeConstraint
@@ -124,9 +125,10 @@ module private CandidateUtils =
                 && constraints.notSupertypes |> List.forall (isSupertype >> not)
             if satisfies then Some c else None
         | GenericCandidate genericCandidate ->
+            // TODO: bug check 'specialConstraints' #SLAVA
             let constraints = constraints.Copy()
-            parameter.GetGenericParameterConstraints()
-            |> Array.iter (substitute subst >> constraints.AddSuperType)
+            for c in parameter.GetGenericParameterConstraints() do
+                substitute subst c |> constraints.AddSuperType
             genericCandidate.AddConstraints constraints |> Option.map GenericCandidate
 
     let candidate2types candidate =
@@ -155,7 +157,8 @@ type typeSolvingResult =
 module TypeSolver =
 
     let mutable private userAssembly = None
-    let genericSolvingDepth = 1
+    // TODO: bug (make this work as follows: 1 -- List<T>, 2 -- List<List<T>>) #SLAVA
+    let genericSolvingDepth = 2
     type private substitution = pdict<Type, symbolicType>
 
     let getAssemblies() =
@@ -296,6 +299,7 @@ module TypeSolver =
                  enumerateNonAbstractSupertypes validate t
 
     let private typeParameterCandidatesWithGeneric getMock subst (constraints : typeConstraints) makeGenericCandidates =
+        // TODO: bug! #SLAVA
         match constraints.supertypes |> List.tryFind (fun t -> t.IsSealed) with
         | Some t ->
             if TypeUtils.isDelegate t then
