@@ -50,12 +50,11 @@ module internal Buffer =
             List.map createArrayRef cases
         | _ -> internalfail $"Memmove: unexpected reference {ref}"
 
-    let private Copy dstAddr dstIndex dstIndices dstArrayType srcAddr srcIndex srcIndices srcArrayType state elemCount =
-        let srcElemType = fst3 srcArrayType
-        let dstElemType = fst3 dstArrayType
-        let size = TypeUtils.internalSizeOf srcElemType
-        assert(srcElemType = dstElemType || TypeUtils.internalSizeOf dstElemType = size)
-        let elemCount = Arithmetics.Div elemCount (MakeNumber size)
+    let private Copy dstAddr dstIndex dstIndices dstArrayType srcAddr srcIndex srcIndices srcArrayType state bytesCount =
+        if Memory.IsSafeContextCopy srcArrayType dstArrayType |> not then
+            internalfail $"Buffer.Copy: unsafe memory copy is not implemented, src type {srcArrayType}, dst type {dstArrayType}"
+        let size = TypeUtils.internalSizeOf (fst3 srcArrayType)
+        let elemCount = Arithmetics.Div bytesCount (MakeNumber size)
         let dstType = Types.ArrayTypeToSymbolicType dstArrayType
         let srcType = Types.ArrayTypeToSymbolicType srcArrayType
         let dstHeapRef = HeapRef dstAddr dstType
