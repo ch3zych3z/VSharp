@@ -19,14 +19,14 @@ open CilState
 open IpOperations
 open CodeLocation
 
-type pob = {loc : codeLocation; lvl : uint; pc : pathCondition}
-    with
-    override x.ToString() = $"loc = {x.loc}; lvl = %d{x.lvl}; pc = %s{Print.PrintPC x.pc}"
+// type pob = {loc : codeLocation; lvl : uint; pc : pathCondition}
+//     with
+//     override x.ToString() = $"loc = {x.loc}; lvl = %d{x.lvl}; pc = %s{Print.PrintPC x.pc}"
 
-type pobStatus =
-    | Unknown
-    | Witnessed of cilState
-    | Unreachable
+// type pobStatus =
+//     | Unknown
+//     | Witnessed of cilState
+//     | Unreachable
 
 type statisticsDump =
     {
@@ -70,7 +70,7 @@ type public SVMStatistics(entryMethods : Method seq, generalizeGenericsCoverage 
     let visitedBlocksNotCoveredByTests = Dictionary<cilState, Set<codeLocation>>()
     let blocksCoveredByTests = ConcurrentDictionary<MethodWithBody, ConcurrentDictionary<offset, unit>>()
 
-    let unansweredPobs = List<pob>()
+    // let unansweredPobs = List<pob>()
     let stopwatch = Stopwatch()
     let internalFails = List<Exception>()
     let iies = List<cilState>()
@@ -293,9 +293,9 @@ type public SVMStatistics(entryMethods : Method seq, generalizeGenericsCoverage 
             emittedExceptions.Add(exceptionType, stackTrace, errorMessage, isFatal)
         | _ -> emittedErrors.Add(s.ipStack, errorMessage, isFatal)
 
-    member x.TrackStepBackward (pob : pob) (cilState : cilState) =
-        // TODO
-        ()
+    // member x.TrackStepBackward (pob : pob) (cilState : cilState) =
+    //     // TODO
+    //     ()
 
     member x.TrackFork (parent : cilState) (children : cilState seq) =
         for child in children do
@@ -308,14 +308,14 @@ type public SVMStatistics(entryMethods : Method seq, generalizeGenericsCoverage 
             for child in children do
                 visitedBlocksNotCoveredByTests[child] <- parentBlocks
 
-    member x.AddUnansweredPob (p : pob) = unansweredPobs.Add(p)
+    // member x.AddUnansweredPob (p : pob) = unansweredPobs.Add(p)
 
     member x.Reset (newEntryMethods : Method seq) =
         entryMethods.Clear()
         entryMethods.AddRange newEntryMethods
 
         totalVisited.Clear()
-        unansweredPobs.Clear()
+        // unansweredPobs.Clear()
         internalFails.Clear()
         iies.Clear()
         solverStopwatch.Reset()

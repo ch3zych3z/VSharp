@@ -1,15 +1,16 @@
 namespace VSharp.Core
 open VSharp
 
-type pathCondition = pset<term>
+// represents conjunction of conditions
+type conditions = pset<term>
 
 // Invariants:
-// - PC does not contain True
-// - if PC contains False then False is the only element in PC
+// - conditions does not contain True
+// - if conditions contains False then False is the only element in PC
 
-module internal PC =
+module internal Conditions =
 
-    let public empty : pathCondition = PersistentSet.empty<term>
+    let public empty : conditions = PersistentSet.empty<term>
     let public isEmpty pc = PersistentSet.isEmpty pc
 
     let public toSeq pc = PersistentSet.toSeq pc
@@ -21,7 +22,7 @@ module internal PC =
         if isFalsePC then assert(toSeq pc |> Seq.length = 1)
         isFalsePC
 
-    let rec public add pc cond : pathCondition =
+    let rec public add pc cond : conditions =
         match cond with
         | True -> pc
         | False -> falsePC()
@@ -43,13 +44,15 @@ module internal PC =
                 | _ -> pc) pc
             PersistentSet.add pc' cond
 
-    let public mapPC mapper (pc : pathCondition) : pathCondition =
+    let public mapPC mapper (pc : conditions) : conditions =
         let mapAndAdd acc cond k =
             let acc' = mapper cond |> add acc
             if isFalse acc' then falsePC() else k acc'
         Cps.Seq.foldlk mapAndAdd empty (toSeq pc) id
-    let public mapSeq mapper (pc : pathCondition) = toSeq pc |> Seq.map mapper
+    let public mapSeq mapper (pc : conditions) = toSeq pc |> Seq.map mapper
+
+    let toStringSeq pc = Seq.map toString pc |> Seq.sort |> join " /\ "
 
     let toString pc = mapSeq toString pc |> Seq.sort |> join " /\ "
 
-    let union (pc1 : pathCondition) (pc2 : pathCondition) = Seq.fold add pc1 (toSeq pc2)
+    let union (pc1 : conditions) (pc2 : conditions) = Seq.fold add pc1 (toSeq pc2)

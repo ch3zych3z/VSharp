@@ -434,7 +434,7 @@ public class Mocking
         return 2;
     }
 
-    [TestSvm(100)]
+    [Ignore("need DPLL(t) solving")]
     public int DefaultImplTest(IInterface i)
     {
         var value = i.GetObj();

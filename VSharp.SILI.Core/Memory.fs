@@ -573,9 +573,9 @@ module internal Memory =
                 Unchecked.defaultof<state>
             )
             then
+                let typeStorage = typeStorage()
                 let state = {
-                    pc = PC.empty
-                    typeStorage = typeStorage()
+                    pc = PathConstraints(typeStorage)
                     initializedTypes = SymbolicSet.empty
                     typeVariables = (MappedStack.empty, Stack.empty)
                     currentTime = [1]
@@ -1656,8 +1656,20 @@ module internal Memory =
         member private self.MakeSymbolicValue (source : ISymbolicConstantSource) name typ =
             match typ with
             | Bool
-            | AddressType
             | Numeric _ -> Constant name source typ
+            | AddressType ->
+                let address = Constant name source typ
+
+                let typeConstraints = state.pc.TypeConstraints
+                match source with
+                | HeapAddressSource(ArrayRangeReading _)
+                | PointerAddressSource(ArrayRangeReading _) -> ()
+                | HeapAddressSource _
+                | PointerAddressSource _ ->
+                    typeConstraints.AddSupertypeConstraint address source.TypeOfLocation
+                | _ -> ()
+
+                address
             | StructType _ ->
                 let makeField _ field typ =
                     let fieldSource = {baseSource = source; field = field}
@@ -1687,6 +1699,11 @@ module internal Memory =
             assert(isValueType declaringType |> not)
             let source : heapAddressSource = {baseSource = {key = ThisKey m; time = VectorTime.zero}}
             let address = Constant "this" source addressType
+
+            let supertype = (source :> ISymbolicConstantSource).TypeOfLocation
+            let typeConstraints = state.pc.TypeConstraints
+            typeConstraints.AddSupertypeConstraint address supertype
+
             HeapRef address declaringType
 
         member private self.FillModelWithParametersAndThis (method : IMethod) =
@@ -1938,7 +1955,6 @@ module internal Memory =
             with get() = state
             and set value = state <- value
 
-
         interface IMemory with
 
             override _.AllocatedTypes
@@ -2059,7 +2075,6 @@ module internal Memory =
             member self.Write reporter reference value = self.Write reporter reference value
             member self.WriteStaticField typ field value = self.WriteStaticField typ field value
 
-
     type heapReading<'key, 'reg when 'key : equality and 'key :> IMemoryKey<'key, 'reg> and 'reg : equality and 'reg :> IRegion<'reg>> with
         interface IMemoryAccessConstantSource with
             override x.Compose state =
@@ -2100,7 +2115,6 @@ module internal Memory =
                     MemoryRegion.read region key (x.picker.isDefaultKey state) inst
                 afters |> List.map (mapsnd read) |> Merging.merge
 
-
     type state with
         static member MakeEmpty complete =
             let memory = Memory()
@@ -2111,11 +2125,19 @@ module internal Memory =
         // TODO: think about moving it to State.fs and get rid of type downcast
         member x.Copy newPc =
             let memory = x.memory.Copy() :?> Memory
-            let methodMocks = Dictionary()
+
+            // copying method mocks
+            let methodMocksCopy = Dictionary()
             for entry in x.methodMocks do
                 let method = entry.Key
                 let newMock = entry.Value.Copy()
-                methodMocks.Add(method, newMock)
-            let state = { memory.State with pc = newPc; methodMocks = methodMocks; memory = memory }
+                methodMocksCopy.Add(method, newMock)
+
+            let state = {
+                memory.State with
+                    pc = newPc
+                    methodMocks = methodMocksCopy
+                    memory = memory
+            }
             memory.State <- state
             state

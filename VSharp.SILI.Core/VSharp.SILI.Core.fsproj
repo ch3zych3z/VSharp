@@ -20,7 +20,9 @@
         <Compile Include="Operations.fs" />
         <Compile Include="Terms.fs" />
         <Compile Include="Propositional.fs" />
-        <Compile Include="PathCondition.fs" />
+        <Compile Include="Conditions.fs" />
+        <Compile Include="TypeSolverUtils.fs" />
+        <Compile Include="PathConstraints.fs" />
         <Compile Include="Merging.fs" />
         <Compile Include="Common.fs" />
         <Compile Include="Arithmetics.fs" />
@@ -30,14 +32,14 @@
         <Compile Include="MemoryRegion.fs" />
         <Compile Include="EvaluationStack.fs" />
         <Compile Include="CallStack.fs" />
-        <Compile Include="TypeSolverUtils.fs" />
         <Compile Include="ConcreteMemory.fsi" />
         <Compile Include="ConcreteMemory.fs" />
         <Compile Include="State.fs" />
+        <Compile Include="TypeCasting.fs" />
+        <Compile Include="TypeStorage.fs" />
         <Compile Include="Memory.fs" />
         <Compile Include="MethodMock.fs" />
         <Compile Include="ArrayInitialization.fs" />
-        <Compile Include="TypeCasting.fs" />
         <Compile Include="TypeSolver.fs" />
         <Compile Include="SolverInteraction.fs" />
         <Compile Include="Copying.fs" />

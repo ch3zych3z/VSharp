@@ -7,7 +7,7 @@ open VSharp
 open VSharp.Interpreter.IL
 open CilState
 
-type BidirectionalSearcher(forward : IForwardSearcher, backward : IBackwardSearcher, targeted : ITargetedSearcher) =
+type BidirectionalSearcher(forward : IForwardSearcher, targeted : ITargetedSearcher) =
 
 //    let starts = Queue<MethodBase>()
 //    let addedStarts = HashSet<MethodBase>()
@@ -35,23 +35,23 @@ type BidirectionalSearcher(forward : IForwardSearcher, backward : IBackwardSearc
 //            Seq.iter (fun p -> rememberStart p.loc.method) mainPobs
 //        override x.PriorityQueue _ = StackFrontQueue() :> IPriorityQueue<cilState>
 
-        override x.Init cilStates mainPobs =
-            backward.Init mainPobs
+        override x.Init cilStates =
+            // backward.Init mainPobs
 //            let start : cilState = CilStateOperations.makeInitialState m (ExplorerBase.FormInitialStateWithoutStatics m)
             forward.Init cilStates
 
-        override x.Statuses() = backward.Statuses()
-        override x.Answer pob pobStatus = backward.Answer pob pobStatus
-        override x.UpdatePobs parent child =
-            backward.Update parent child
+        // override x.Statuses() = backward.Statuses()
+        // override x.Answer pob pobStatus = backward.Answer pob pobStatus
+        // override x.UpdatePobs parent child =
+            // backward.Update parent child
         override x.UpdateStates parent children =
             if not parent.IsIsolated then
                 forward.Update (parent, children)
-                backward.AddBranch parent |> ignore
-                Seq.iter (backward.AddBranch >> ignore) children
-            else
-                let reached = targeted.Update parent children
-                Seq.iter (backward.AddBranch >> ignore) reached
+                // backward.AddBranch parent |> ignore
+                // Seq.iter (backward.AddBranch >> ignore) children
+            // else
+                // let reached = targeted.Update parent children
+                // Seq.iter (backward.AddBranch >> ignore) reached
         override x.States() = forward.States()
 
         override x.Pick () =
@@ -78,23 +78,23 @@ type BidirectionalSearcher(forward : IForwardSearcher, backward : IBackwardSearc
 
         override x.Reset () =
             forward.Reset()
-            backward.Reset()
+            // backward.Reset()
             targeted.Reset()
 
         override x.Remove cilState =
             forward.Remove cilState
-            backward.Remove cilState
+            // backward.Remove cilState
             targeted.Remove cilState
 
         override x.StatesCount with get() =
-            forward.StatesCount + backward.StatesCount + targeted.StatesCount
+            forward.StatesCount + targeted.StatesCount
 
 type OnlyForwardSearcher(searcher : IForwardSearcher) =
     interface IBidirectionalSearcher with
-        override x.Init cilStates _ = searcher.Init cilStates
-        override x.Statuses() = []
-        override x.Answer _ _ = ()
-        override x.UpdatePobs _ _ = ()
+        override x.Init cilStates = searcher.Init cilStates
+        // override x.Statuses() = []
+        // override x.Answer _ _ = ()
+        // override x.UpdatePobs _ _ = ()
         override x.UpdateStates parent children = searcher.Update(parent, children)
         override x.Pick () =
             match searcher.Pick() with
@@ -106,107 +106,107 @@ type OnlyForwardSearcher(searcher : IForwardSearcher) =
         override x.StatesCount with get() = searcher.StatesCount
 
 // TODO: check pob duplicates
-type BackwardSearcher() =
-    let mainPobs = List<pob>()
-    let currentPobs = List<pob>()
-    let qBack = List<cilState * pob>()
-    let alreadyAddedInQBack = HashSet<cilState * pob>()
-    let ancestorOf = Dictionary<pob, List<pob>>()
-    let answeredPobs = Dictionary<pob, pobStatus>()
-    let loc2pob = Dictionary<codeLocation, List<pob>>()
-
-    let doAddPob (pob : pob) =
-        currentPobs.Add(pob)
-        let mutable pobsRef = ref null
-        if not <| loc2pob.TryGetValue(pob.loc, pobsRef) then
-            pobsRef <- ref (List<pob>())
-            loc2pob.Add(pob.loc, pobsRef.Value)
-        pobsRef.Value.Add pob
-
-    let addPob parent child =
-        if not <| ancestorOf.ContainsKey(child) then
-            ancestorOf.Add(child, List<_>())
-        ancestorOf[child].Add(parent)
-        doAddPob child
-
-    let updateQBack (s : cilState) : pob list =
-        match s.CurrentIp.ToCodeLocation() with
-        | None -> []
-        | Some loc ->
-            let pobsList = ref null
-            if loc2pob.TryGetValue(loc, pobsList) then
-                pobsList.Value |> Seq.iter (fun p ->
-                    if not <| alreadyAddedInQBack.Contains(s, p) then
-                        alreadyAddedInQBack.Add(s, p) |> ignore
-                        qBack.Add(s, p))
-                pobsList.Value |> List.ofSeq
-            else []
-
-    let rec answerYes (s' : cilState) (p' : pob) =
-        if (not <| loc2pob.ContainsKey(p'.loc)) then
-            assert(mainPobs.Contains p')
-        else
-            let list = loc2pob[p'.loc]
-            list.Remove(p') |> ignore
-            if list.Count = 0 then loc2pob.Remove(p'.loc) |> ignore
-        currentPobs.Remove(p') |> ignore
-        qBack.RemoveAll(fun (_, p as pair) -> if p = p' then alreadyAddedInQBack.Remove(pair) |> ignore; true else false) |> ignore
-        if Seq.contains p' mainPobs then
-            mainPobs.Remove(p') |> ignore
-        if not(answeredPobs.ContainsKey p') then answeredPobs.Add(p', Witnessed s')
-        else answeredPobs[p'] <- Witnessed s'
-        Application.removeGoal p'.loc
-        if ancestorOf.ContainsKey p' then
-//            assert(ancestorOf.[p'] <> null)
-            Seq.iter (fun (ancestor : pob) ->
-                assert(p' <> ancestor)
-                if currentPobs.Contains(ancestor) || mainPobs.Contains(ancestor) then
-                    answerYes s' ancestor) ancestorOf[p']
-
-    let clear() =
-        mainPobs.Clear()
-        currentPobs.Clear()
-        qBack.Clear()
-        alreadyAddedInQBack.Clear()
-        ancestorOf.Clear()
-        answeredPobs.Clear()
-
-    interface IBackwardSearcher with
-        override x.Init pobs =
-            clear()
-            Seq.iter mainPobs.Add pobs
-            Seq.iter (fun p -> answeredPobs.Add(p, pobStatus.Unknown)) pobs
-            Seq.iter doAddPob pobs
-
-        override x.Update parent child = addPob parent child
-
-        override x.Answer pob status =
-            match status with
-            | Witnessed s' -> answerYes s' pob
-            | _ -> __notImplemented__()
-        override x.Statuses () = Seq.map (fun (kvp : KeyValuePair<pob, pobStatus>) -> kvp.Key, kvp.Value) answeredPobs
-
-        override x.Pick() =
-            if qBack.Count > 0 then
-                let ps = qBack[0]
-                qBack.RemoveAt(0)
-                Propagate ps
-            else NoAction
-
-        override x.AddBranch cilState =
-            updateQBack cilState
-
-        override x.Remove cilState =
-            let removePredicate (cilState', _ as pair) =
-                if cilState = cilState' then alreadyAddedInQBack.Remove(pair) |> ignore; true
-                else false
-            let count = qBack.RemoveAll(removePredicate)
-            if count > 0 then
-                internalfail "BackwardSearcher.Remove: count > 0"
-
-        override x.Reset() = clear()
-
-        override x.StatesCount with get() = qBack.Count
+// type BackwardSearcher() =
+//     let mainPobs = List<pob>()
+//     let currentPobs = List<pob>()
+//     let qBack = List<cilState * pob>()
+//     let alreadyAddedInQBack = HashSet<cilState * pob>()
+//     let ancestorOf = Dictionary<pob, List<pob>>()
+//     let answeredPobs = Dictionary<pob, pobStatus>()
+//     let loc2pob = Dictionary<codeLocation, List<pob>>()
+//
+//     let doAddPob (pob : pob) =
+//         currentPobs.Add(pob)
+//         let mutable pobsRef = ref null
+//         if not <| loc2pob.TryGetValue(pob.loc, pobsRef) then
+//             pobsRef <- ref (List<pob>())
+//             loc2pob.Add(pob.loc, pobsRef.Value)
+//         pobsRef.Value.Add pob
+//
+//     let addPob parent child =
+//         if not <| ancestorOf.ContainsKey(child) then
+//             ancestorOf.Add(child, List<_>())
+//         ancestorOf[child].Add(parent)
+//         doAddPob child
+//
+//     let updateQBack (s : cilState) : pob list =
+//         match s.CurrentIp.ToCodeLocation() with
+//         | None -> []
+//         | Some loc ->
+//             let pobsList = ref null
+//             if loc2pob.TryGetValue(loc, pobsList) then
+//                 pobsList.Value |> Seq.iter (fun p ->
+//                     if not <| alreadyAddedInQBack.Contains(s, p) then
+//                         alreadyAddedInQBack.Add(s, p) |> ignore
+//                         qBack.Add(s, p))
+//                 pobsList.Value |> List.ofSeq
+//             else []
+//
+//     let rec answerYes (s' : cilState) (p' : pob) =
+//         if (not <| loc2pob.ContainsKey(p'.loc)) then
+//             assert(mainPobs.Contains p')
+//         else
+//             let list = loc2pob[p'.loc]
+//             list.Remove(p') |> ignore
+//             if list.Count = 0 then loc2pob.Remove(p'.loc) |> ignore
+//         currentPobs.Remove(p') |> ignore
+//         qBack.RemoveAll(fun (_, p as pair) -> if p = p' then alreadyAddedInQBack.Remove(pair) |> ignore; true else false) |> ignore
+//         if Seq.contains p' mainPobs then
+//             mainPobs.Remove(p') |> ignore
+//         if not(answeredPobs.ContainsKey p') then answeredPobs.Add(p', Witnessed s')
+//         else answeredPobs[p'] <- Witnessed s'
+//         Application.removeGoal p'.loc
+//         if ancestorOf.ContainsKey p' then
+// //            assert(ancestorOf.[p'] <> null)
+//             Seq.iter (fun (ancestor : pob) ->
+//                 assert(p' <> ancestor)
+//                 if currentPobs.Contains(ancestor) || mainPobs.Contains(ancestor) then
+//                     answerYes s' ancestor) ancestorOf[p']
+//
+//     let clear() =
+//         mainPobs.Clear()
+//         currentPobs.Clear()
+//         qBack.Clear()
+//         alreadyAddedInQBack.Clear()
+//         ancestorOf.Clear()
+//         answeredPobs.Clear()
+//
+//     interface IBackwardSearcher with
+//         override x.Init pobs =
+//             clear()
+//             Seq.iter mainPobs.Add pobs
+//             Seq.iter (fun p -> answeredPobs.Add(p, pobStatus.Unknown)) pobs
+//             Seq.iter doAddPob pobs
+//
+//         override x.Update parent child = addPob parent child
+//
+//         override x.Answer pob status =
+//             match status with
+//             | Witnessed s' -> answerYes s' pob
+//             | _ -> __notImplemented__()
+//         override x.Statuses () = Seq.map (fun (kvp : KeyValuePair<pob, pobStatus>) -> kvp.Key, kvp.Value) answeredPobs
+//
+//         override x.Pick() =
+//             if qBack.Count > 0 then
+//                 let ps = qBack[0]
+//                 qBack.RemoveAt(0)
+//                 Propagate ps
+//             else NoAction
+//
+//         override x.AddBranch cilState =
+//             updateQBack cilState
+//
+//         override x.Remove cilState =
+//             let removePredicate (cilState', _ as pair) =
+//                 if cilState = cilState' then alreadyAddedInQBack.Remove(pair) |> ignore; true
+//                 else false
+//             let count = qBack.RemoveAll(removePredicate)
+//             if count > 0 then
+//                 internalfail "BackwardSearcher.Remove: count > 0"
+//
+//         override x.Reset() = clear()
+//
+//         override x.StatesCount with get() = qBack.Count
 
 module DummyTargetedSearcher =
 

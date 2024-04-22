@@ -103,8 +103,8 @@ module TypeStorage =
                     (toList notSubtypeConstraints address)
             typesConstraints.Add address typeConstraints
 
-    let addTypeConstraint (typesConstraints : typesConstraints) condition =
-        List.singleton condition |> addTypeConstraints typesConstraints
+    // let addTypeConstraint (typesConstraints : typesConstraints) condition =
+    //     List.singleton condition |> addTypeConstraints typesConstraints
 
 // ------------------------------------------------- Type solver core -------------------------------------------------
 
@@ -218,7 +218,7 @@ module TypeSolver =
                     // TODO: in any assembly, there is no array types, so need to generate it manually
                     yield! Seq.choose makeCandidate types
 
-                yield! List.choose (ArrayPrototype >> validate) arrayKinds
+            yield! List.choose (ArrayPrototype >> validate) arrayKinds
         }
 
         let mock =
@@ -314,7 +314,7 @@ module TypeSolver =
 
     let private typeCandidates getMock subst constraints (makeGenericCandidates : Type -> genericCandidate option) =
         assert userAssembly.IsSome
-        match constraints.supertypes |> List.tryFind (fun t -> t.IsSealed) with
+        match constraints.supertypes |> List.tryFind (fun t -> t.IsSealed && not t.IsArray) with
         | Some t ->
             if TypeUtils.isDelegate t then
                 // Forcing mock usage for delegate types
@@ -464,7 +464,7 @@ module TypeSolver =
         let methodGenericArguments = m.GenericArguments
         typeGenericArguments, methodGenericArguments
 
-    let solveMethodParameters (typeStorage : typeStorage) (m : IMethod) =
+    let solveMethodParameters (typeStorage : ITypeConstraints) (m : IMethod) =
         let declaringType = m.DeclaringType
         userAssembly <- Some declaringType.Assembly
         let methodBase = m.MethodBase
@@ -490,7 +490,7 @@ module TypeSolver =
         let refineMock = refineMock getMock typeConstraint
         candidates.Filter satisfies refineMock
 
-    let private refineStorage getMock (typeStorage : typeStorage) typeGenericArguments methodGenericArguments =
+    let private refineStorage getMock (typeStorage : ITypeConstraints) typeGenericArguments methodGenericArguments =
         let mutable emptyCandidates = false
         let constraints = typeStorage.Constraints
         assert constraints.IsValid()
@@ -541,7 +541,7 @@ module TypeSolver =
             resultConstraints.Merge constraints |> ignore
         resultConstraints
 
-    let private evalInModel model (typeStorage : typeStorage) =
+    let private evalInModel model (typeStorage : ITypeConstraints) =
         // Clustering addresses, which are equal in model
         let eqInModel = Dictionary<concreteHeapAddress, List<term>>()
         let addressesTypes = typeStorage.AddressesTypes
@@ -582,11 +582,11 @@ module TypeSolver =
         let m = CallStack.stackTrace state.memory.Stack |> List.last
         userAssembly <- Some m.DeclaringType.Assembly
         let typeParams, methodParams = getGenericParameters m
-        let typeStorage = state.typeStorage
+        let typeStorage = state.pc.TypeConstraints
         let getMock = getMock typeStorage.TypeMocks
         refineStorage getMock typeStorage typeParams methodParams
 
-    let private checkInequalityViaCandidates (typeStorage : typeStorage) =
+    let private checkInequalityViaCandidates (typeStorage : ITypeConstraints) =
         let unequal = HashSet<term * term>()
         let addressesTypes = typeStorage.AddressesTypes
         for KeyValue(address1, candidates1) in addressesTypes do
@@ -602,7 +602,7 @@ module TypeSolver =
         Some unequal
 
     let checkInequality (state : state) =
-        let typeStorage = state.typeStorage
+        let typeStorage = state.pc.TypeConstraints
         let constraints = typeStorage.Constraints
         let mutable hasInterface = false
         for KeyValue(_, addressConstraints) in constraints do
@@ -613,7 +613,7 @@ module TypeSolver =
             | TypeSat -> checkInequalityViaCandidates typeStorage
             | TypeUnsat -> None
 
-    let private refineTypesInModel model (typeStorage : typeStorage) =
+    let private refineTypesInModel model (typeStorage : ITypeConstraints) =
         match model with
         | StateModel modelState ->
             for entry in evalInModel model typeStorage do
@@ -626,7 +626,7 @@ module TypeSolver =
     let solveTypes (model : model) (state : state) =
         let result = solveTypesWithoutModel state
         match result with
-        | TypeSat -> refineTypesInModel model state.typeStorage
+        | TypeSat -> refineTypesInModel model state.pc.TypeConstraints
         | _ -> ()
         result
 
@@ -639,7 +639,7 @@ module TypeSolver =
         match thisRef.term with
         | HeapRef({term = ConcreteHeapAddress thisAddress}, _) when VectorTime.less state.startingTime thisAddress -> ()
         | HeapRef(thisAddress, _) ->
-            let typeStorage = state.typeStorage
+            let typeStorage = state.pc.TypeConstraints
             match typeStorage[thisAddress] with
             | Some candidates ->
                 typeStorage[thisAddress] <- candidates.KeepOnlyMock()
@@ -653,7 +653,7 @@ module TypeSolver =
             state.memory.AllocatedTypes[thisAddress] |> Seq.singleton
         | HeapRef(thisAddress, _) ->
             let thisConstraints = List.singleton thisType |> typeConstraints.FromSuperTypes
-            let typeStorage = state.typeStorage
+            let typeStorage = state.pc.TypeConstraints
             typeStorage.AddConstraint thisAddress thisConstraints
             let checkOverrides t =
                 match t with

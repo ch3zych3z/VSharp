@@ -195,7 +195,7 @@ module internal InstructionsSet =
         let y, x = cilState.Peek2()
         let transform =
             if TypeUtils.isBool x || TypeUtils.isBool y
-            then fun t k -> k (transform2BooleanTerm cilState.state.pc t)
+            then fun t k -> k (transform2BooleanTerm cilState.state.pc.PathCondition t)
             else idTransformation
         binaryOperationWithBoolResult OperationType.Equal transform transform cilState
 
@@ -219,7 +219,7 @@ module internal InstructionsSet =
            | offsetThen, [offsetElse] -> oldIp.MoveInstruction offsetThen, oldIp.MoveInstruction offsetElse
            | _ -> __unreachable__()
         cilState.StatedConditionalExecutionCIL
-           (fun state k -> k (condTransform <| transform2BooleanTerm state.pc cond, state))
+           (fun state k -> k (condTransform <| transform2BooleanTerm state.pc.PathCondition cond, state))
            (fun cilState k -> cilState.SetCurrentIp ipThen; k [cilState])
            (fun cilState k -> cilState.SetCurrentIp ipElse; k [cilState])
            id
@@ -2093,7 +2093,7 @@ type ILInterpreter() as this =
                 | None -> makeStep' ip k
                 | Some t ->
                     cilState.StatedConditionalExecutionCIL
-                        (fun state k -> k (transform2BooleanTerm state.pc t, state))
+                        (fun state k -> k (transform2BooleanTerm state.pc.PathCondition t, state))
                         (fun cilState k ->
                             cilState.ClearFilterResult()
                             let handlerLoc = Some { method = location.method; offset = offset }

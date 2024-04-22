@@ -721,6 +721,33 @@ module internal Terms =
         | Concrete(:? concreteHeapAddress as a, AddressType) -> ConcreteHeapAddress a |> Some
         | _ -> None
 
+    and (|Equal|_|) (termNode : termNode) =
+        match termNode with
+        | Expression (Operator OperationType.Equal, [x; y], t) -> Equal(x, y, t) |> Some
+        | _ -> None
+
+    and (|EqualT|_|) = term >> (|Equal|_|)
+
+    and (|NotEqual|_|) (termNode : termNode) =
+        match termNode with
+        | Expression (Operator OperationType.NotEqual, [x; y], t) -> NotEqual(x, y, t) |> Some
+        | _ -> None
+
+    and (|Null|_|) (termNode : termNode) =
+        match termNode with
+        | Concrete(o, _) when o = VectorTime.zero -> Some Null
+        | _ -> None
+
+    and (|NullT|_|) = term >> (|Null|_|)
+
+    and (|NotNullAddress|_|) (termNode : termNode) =
+        match termNode with
+        | NotEqual(address, NullT, t)
+        | NotEqual(NullT, address, t)
+        | Negation(EqualT(address, NullT, t))
+        | Negation(EqualT(NullT, address, t)) -> NotNullAddress(address, t) |> Some
+        | _ -> None
+
     and getConcreteHeapAddress term =
         match term.term with
         | ConcreteHeapAddress(address) -> address

@@ -9,16 +9,16 @@ open VSharp.Utils
 
 type action =
     | GoFront of cilState
-    | GoBack of cilState * pob
+    // | GoBack of cilState * pob
     | Stop
 
 type IBidirectionalSearcher =
-    abstract member Init : cilState list -> pob seq -> unit
+    abstract member Init : cilState list -> unit
     abstract member UpdateStates : cilState -> cilState seq -> unit
-    abstract member UpdatePobs : pob -> pob -> unit
+    // abstract member UpdatePobs : pob -> pob -> unit
     abstract member Pick : unit -> action
-    abstract member Answer : pob -> pobStatus -> unit
-    abstract member Statuses : unit -> seq<pob * pobStatus>
+    // abstract member Answer : pob -> pobStatus -> unit
+    // abstract member Statuses : unit -> seq<pob * pobStatus>
     abstract member States : unit -> cilState seq
     abstract member Reset : unit -> unit
     abstract member Remove : cilState -> unit
@@ -42,18 +42,18 @@ type ITargetedSearcher =
     abstract member Remove : cilState -> unit
     abstract member StatesCount : int
 
-type backwardAction = Propagate of cilState * pob | InitTarget of instructionPointer * pob seq | NoAction
+// type backwardAction = Propagate of cilState * pob | InitTarget of instructionPointer * pob seq | NoAction
 
-type IBackwardSearcher =
-    abstract member Init : pob seq -> unit
-    abstract member Update : pob -> pob -> unit
-    abstract member Answer : pob -> pobStatus -> unit
-    abstract member Statuses : unit -> seq<pob * pobStatus>
-    abstract member Pick : unit -> backwardAction
-    abstract member AddBranch : cilState -> pob list
-    abstract member Reset : unit -> unit
-    abstract member Remove : cilState -> unit
-    abstract member StatesCount : int
+// type IBackwardSearcher =
+    // abstract member Init : pob seq -> unit
+    // abstract member Update : pob -> pob -> unit
+    // abstract member Answer : pob -> pobStatus -> unit
+    // abstract member Statuses : unit -> seq<pob * pobStatus>
+    // abstract member Pick : unit -> backwardAction
+    // abstract member AddBranch : cilState -> pob list
+    // abstract member Reset : unit -> unit
+    // abstract member Remove : cilState -> unit
+    // abstract member StatesCount : int
 
 type IpStackComparer() =
     interface IComparer<cilState> with

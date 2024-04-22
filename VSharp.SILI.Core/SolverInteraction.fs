@@ -36,7 +36,7 @@ module public SolverInteraction =
         | None -> ()
 
     let private checkSatWithCtx state context =
-        let formula = PC.toSeq state.pc |> Seq.append context |> conjunction
+        let formula = state.pc.Conditions |> Seq.append context |> conjunction
         match solver with
         | Some s ->
             onSolverStarted()

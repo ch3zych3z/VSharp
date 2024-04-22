@@ -23,7 +23,7 @@ module API =
     val StatedConditionalExecutionAppend : (state -> (state -> (term * state -> 'a) -> 'b) -> (state -> ('c list -> 'a) -> 'a) -> (state -> ('c list -> 'a) -> 'a) -> ('c list -> 'a) -> 'b)
 
     val GuardedApplyExpression : term -> (term -> term) -> term
-    val GuardedApplyExpressionWithPC : pathCondition -> term -> (term -> term) -> term
+    val GuardedApplyExpressionWithPC : conditions -> term -> (term -> term) -> term
     val GuardedStatedApplyStatementK : state -> term -> (state -> term -> (term * state -> 'a) -> 'a) -> ((term * state) list -> 'a) -> 'a
     val GuardedStatedApplyk : (state -> term -> ('item -> 'a) -> 'a) -> state -> term -> ('item list -> 'item list) -> ('item list -> 'a) -> 'a
 
@@ -33,7 +33,7 @@ module API =
     val PerformBinaryOperation : OperationType -> term -> term -> (term -> 'a) -> 'a
     val PerformUnaryOperation : OperationType -> term -> (term -> 'a) -> 'a
 
-    val SolveGenericMethodParameters : typeStorage -> IMethod -> (symbolicType[] * symbolicType[]) option
+    val SolveGenericMethodParameters : ITypeConstraints -> IMethod -> (symbolicType[] * symbolicType[]) option
     val SolveThisType : state -> term -> unit
     val ResolveCallVirt : state -> term -> Type -> IMethod -> symbolicType seq
     val KeepOnlyMock : state -> term -> unit
@@ -151,8 +151,8 @@ module API =
         val AddConstraint : state -> term -> unit
         val IsFalsePathCondition : state -> bool
         val Contradicts : state -> term -> bool
-        val PathConditionToSeq : pathCondition -> term seq
-        val EmptyPathCondition : pathCondition
+        val PathConditionToSeq : conditions -> term seq
+        val EmptyPathCondition : conditions
 
     module Types =
 
@@ -363,7 +363,7 @@ module API =
         val StringCtorOfCharArrayAndLen : state -> term -> term -> term -> state list
 
         // TODO: get rid of all unnecessary stuff below!
-        val WLP : state -> pathCondition -> pathCondition
+        // val WLP : state -> PathConstraints -> PathConstraints
 
         val Merge2States : state -> state -> state list
         val Merge2Results : term * state -> term * state -> (term * state) list
@@ -383,7 +383,7 @@ module API =
 
     module Print =
         val Dump : state -> string
-        val PrintPC : pathCondition -> string
+        val PrintPC : conditions -> string
 
 //    module Marshalling =
 //        val Unmarshal : state -> obj -> term * state

@@ -49,7 +49,7 @@ module API =
     let PerformBinaryOperation op left right k = simplifyBinaryOperation op left right k
     let PerformUnaryOperation op arg k = simplifyUnaryOperation op arg k
 
-    let SolveGenericMethodParameters (typeStorage : typeStorage) (method : IMethod) =
+    let SolveGenericMethodParameters (typeStorage : ITypeConstraints) (method : IMethod) =
         TypeSolver.solveMethodParameters typeStorage method
 
     let SolveThisType state thisRef =
@@ -57,7 +57,7 @@ module API =
         | HeapRef(address, t) ->
             let constraints = List.singleton t |> typeConstraints.FromSuperTypes
             // TODO: add 'isPublic' constraint, because 'this' may be rendered only with public type
-            state.typeStorage.AddConstraint address constraints
+            state.pc.TypeConstraints.AddConstraint address constraints
             match TypeSolver.solveTypes state.model state with
             | TypeSat -> ()
             | TypeUnsat -> __insufficientInformation__ "SolveThisType: cannot find non-abstract type for 'this'"
@@ -251,13 +251,11 @@ module API =
 
         let AddConstraint (conditionState : state) condition =
             conditionState.AddConstraint condition
-            let constraints = conditionState.typeStorage.Constraints
-            TypeStorage.addTypeConstraint constraints condition
 
-        let IsFalsePathCondition conditionState = PC.isFalse conditionState.pc
-        let Contradicts state condition = PC.add state.pc condition |> PC.isFalse
-        let PathConditionToSeq (pc : pathCondition) = PC.toSeq pc
-        let EmptyPathCondition = PC.empty
+        let IsFalsePathCondition conditionState = conditionState.pc.IsFalse
+        let Contradicts state condition = Conditions.add state.pc.LogicalConstraints condition |> Conditions.isFalse
+        let PathConditionToSeq (pc : conditions) = Conditions.toSeq pc
+        let EmptyPathCondition = Conditions.empty
 
     module Types =
         let SizeOf t = TypeUtils.internalSizeOf t
@@ -827,7 +825,11 @@ module API =
         let StringCtorOfCharArrayAndLen state arrayRef stringRef length =
             CommonStringCtorOfCharArray state arrayRef stringRef (Some length)
 
-        let WLP (state : state) pc' = PC.mapPC state.FillHoles pc' |> PC.union state.pc
+        // let WLP (state : state) (pc' : PathConstraints) =
+        //     let pc = state.pc.Copy()
+        //     let conditions' = Conditions.ofSeq pc'.Conditions
+        //     Conditions.mapPC state.FillHoles conditions' |> Conditions.toSeq |> pc.Union
+        //     pc
 
         let Merge2States (s1 : state) (s2 : state) = State.merge2States s1 s2
         let Merge2Results (r1, s1 : state) (r2, s2 : state) = State.merge2Results (r1, s1) (r2, s2)
@@ -888,4 +890,4 @@ module API =
 
     module Print =
         let Dump (state : state) = state.Dump()
-        let PrintPC pc = PC.toString pc
+        let PrintPC pc = Conditions.toString pc

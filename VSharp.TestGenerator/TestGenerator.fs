@@ -303,7 +303,7 @@ module TestGenerator =
         test.AddExternMock extMock
 
     let private modelState2test (test : UnitTest) suite indices mockCache (m : Method) (model : model) modelState (state : state) =
-        match SolveGenericMethodParameters state.typeStorage m with
+        match SolveGenericMethodParameters state.pc.TypeConstraints m with
         | None -> None
         | Some(classParams, methodParams) ->
             let implementations = Dictionary<MethodInfo, term[] * term[][]>()

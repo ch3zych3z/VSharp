@@ -35,7 +35,7 @@ module internal Object =
                         match object.term with
                         | HeapRef(address, _) -> address
                         | _ -> internalfail $"MemberwiseClone: unexpected object ref {object}"
-                    match state.typeStorage[address] with
+                    match state.pc.TypeConstraints[address] with
                     | Some candidates -> Seq.head (Seq.head candidates.ConcreteTypes).Types
                     | _ -> t
                 else t

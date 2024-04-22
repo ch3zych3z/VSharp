@@ -298,8 +298,8 @@ and IMemory =
 and
     [<ReferenceEquality>]
     state = {
-        mutable pc : pathCondition
-        mutable typeStorage : typeStorage
+        // mutable pc : pathCondition
+        mutable pc : PathConstraints
         mutable initializedTypes : symbolicTypeSet                         // Types with initialized static members
         mutable typeVariables : typeVariables                              // Type variables assignment in the current state
         mutable currentTime : vectorTime                                   // Current timestamp (and next allocated address as well) in this state
@@ -314,7 +314,7 @@ and
         override x.ToString() = String.Empty
 
         member x.AddConstraint cond =
-            x.pc <- PC.add x.pc cond
+            x.pc.AddCondition cond
 
         // ------------------------------- Types -------------------------------
 
@@ -449,7 +449,7 @@ and
             let memory = x.memory
             let sb = StringBuilder()
             let sb =
-                (if PC.isEmpty x.pc then sb else x.pc |> PC.toString |> sprintf "Path condition: %s" |> PrettyPrinting.appendLine sb)
+                (if x.pc.IsEmpty then sb else x.pc.Conditions |> Conditions.toStringSeq |> sprintf "Path condition: %s" |> PrettyPrinting.appendLine sb)
                 |> x.DumpDict "Fields" (sortBy toString) toString (MemoryRegion.toString "    ") memory.ClassFields
                 |> x.DumpDict "Array contents" (sortBy x.ArrayTypeToString) x.ArrayTypeToString (MemoryRegion.toString "    ") memory.Arrays
                 |> x.DumpDict "Array lengths" (sortBy x.ArrayTypeToString) x.ArrayTypeToString (MemoryRegion.toString "    ") memory.Lengths

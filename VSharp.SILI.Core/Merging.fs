@@ -106,8 +106,8 @@ module internal Merging =
 
     let commonGuardedMapkWithPC pc mapper gvs merge k =
         let foldFunc gvs (g, v) k =
-            let pc' = PC.add pc g
-            if PC.isFalse pc' then k gvs
+            let pc' = Conditions.add pc g
+            if Conditions.isFalse pc' then k gvs
             else mapper v (fun t -> k ((g, t) :: gvs))
         Cps.List.foldlk foldFunc [] gvs (merge >> k)
 

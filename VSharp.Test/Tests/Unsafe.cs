@@ -128,13 +128,13 @@ namespace IntegrationTests
         [TestSvm]
         public static IntPtr ConvIntToNativeInt(int a)
         {
-            return (IntPtr) a;
+            return (IntPtr)a;
         }
 
         [TestSvm]
         public static UIntPtr ConvUIntToNativeUInt(uint a)
         {
-            return (UIntPtr) a;
+            return (UIntPtr)a;
         }
 
         [TestSvm]
@@ -167,8 +167,8 @@ namespace IntegrationTests
 
         private static bool Identity(int startValue)
         {
-            void* nativeInt = (void*) startValue;
-            int back = (int) nativeInt;
+            void* nativeInt = (void*)startValue;
+            int back = (int)nativeInt;
             return startValue == back;
         }
 
@@ -179,7 +179,7 @@ namespace IntegrationTests
         }
 
         [Ignore("need to create case for ptr inside term2obj(use ptrRepr)")]
-        public static int *AddressArithmetic()
+        public static int* AddressArithmetic()
         {
             int x = 428999;
             return &x + 1;
@@ -189,7 +189,7 @@ namespace IntegrationTests
         [TestSvm(90)]
         public static bool ArrayConcreteSafeRead1()
         {
-            var array = new int[] {1, 2, 3};
+            var array = new int[] { 1, 2, 3 };
             int result;
             fixed (int* ptr = &array[0])
             {
@@ -206,12 +206,13 @@ namespace IntegrationTests
         [TestSvm(90)]
         public static bool ArrayConcreteSafeRead2()
         {
-            var array = new int[] {1, 2, 3};
+            var array = new int[] { 1, 2, 3 };
             int result;
             fixed (int* ptr = &array[0])
             {
                 result = *(ptr + 1);
             }
+
             if (result == 2)
                 return true;
             else
@@ -222,11 +223,11 @@ namespace IntegrationTests
         [TestSvm(91)]
         public static bool ArrayConcreteUnsafeRead()
         {
-            var array = new int[] {1, 2, 3, 4, 5};
+            var array = new int[] { 1, 2, 3, 4, 5 };
             long result;
             fixed (int* ptr = &array[0])
             {
-                var ptr2 = (long*) ptr;
+                var ptr2 = (long*)ptr;
                 result = *(ptr2 + 1);
             }
 
@@ -239,7 +240,7 @@ namespace IntegrationTests
         [TestSvm(92)]
         public static bool ArraySymbolicSafeRead(int i)
         {
-            var array = new int[] {1, 2, 3, 4, 5};
+            var array = new int[] { 1, 2, 3, 4, 5 };
             int result;
             fixed (int* ptr = &array[0])
             {
@@ -256,11 +257,11 @@ namespace IntegrationTests
         [TestSvm(93)]
         public static bool ArraySymbolicUnsafeRead(int i)
         {
-            var array = new int[] {1, 2, 3, 4, 5};
+            var array = new int[] { 1, 2, 3, 4, 5 };
             long result;
             fixed (int* ptr = &array[0])
             {
-                var ptr2 = (long*) ptr;
+                var ptr2 = (long*)ptr;
                 result = *(ptr2 + i);
             }
 
@@ -273,12 +274,12 @@ namespace IntegrationTests
         [TestSvm(93)]
         public static bool ArraySymbolicUnsafeRead2(int i)
         {
-            var array = new int[] {1, 2, 3, 4, 5};
+            var array = new int[] { 1, 2, 3, 4, 5 };
             long result;
             fixed (int* ptr = &array[0])
             {
-                var ptr2 = (byte*) ptr;
-                var ptr3 = (long*) (ptr2 + i);
+                var ptr2 = (byte*)ptr;
+                var ptr3 = (long*)(ptr2 + i);
                 result = *ptr3;
             }
 
@@ -291,7 +292,7 @@ namespace IntegrationTests
         [TestSvm(91)]
         public static bool ArrayConcreteSafeWrite()
         {
-            var array = new int[] {1, 2, 3, 4, 5};
+            var array = new int[] { 1, 2, 3, 4, 5 };
             fixed (int* ptr = &array[0])
             {
                 *ptr = 10;
@@ -306,10 +307,10 @@ namespace IntegrationTests
         [TestSvm(92)]
         public static bool ArrayConcreteUnsafeWrite()
         {
-            var array = new int[] {1, 2, 3, 4, 5};
+            var array = new int[] { 1, 2, 3, 4, 5 };
             fixed (int* ptr = &array[0])
             {
-                var ptr2 = (long*) ptr;
+                var ptr2 = (long*)ptr;
                 *ptr2 = 17179869187L;
             }
 
@@ -322,11 +323,11 @@ namespace IntegrationTests
         [TestSvm(94)]
         public static bool ArraySymbolicUnsafeWrite(int i)
         {
-            var array = new int[] {1, 2, 3, 4, 5};
+            var array = new int[] { 1, 2, 3, 4, 5 };
             fixed (int* ptr = &array[0])
             {
-                var ptr2 = (byte*) ptr;
-                var ptr3 = (long*) (ptr2 + i);
+                var ptr2 = (byte*)ptr;
+                var ptr3 = (long*)(ptr2 + i);
                 *ptr3 = 17179869187L;
             }
 
@@ -339,16 +340,17 @@ namespace IntegrationTests
         [TestSvm(97)]
         public static bool ArraySymbolicUnsafeWrite2(int i)
         {
-            var array = new int[] {1, 2, 3, 4, 5};
-            var test = new int[] {1, 2, 3, 4, 5};
+            var array = new int[] { 1, 2, 3, 4, 5 };
+            var test = new int[] { 1, 2, 3, 4, 5 };
             fixed (int* ptr = &array[0])
             {
-                var ptr2 = (byte*) ptr;
-                var ptr3 = (long*) (ptr2 + i);
+                var ptr2 = (byte*)ptr;
+                var ptr3 = (long*)(ptr2 + i);
                 *ptr3 = 216172782147338240L;
             }
 
-            if ((array[0] != test[0] || array[1] != test[1] || array[2] != test[2] || array[3] != test[3] || array[4] != test[4]) && i == 1)
+            if ((array[0] != test[0] || array[1] != test[1] || array[2] != test[2] || array[3] != test[3] ||
+                 array[4] != test[4]) && i == 1)
                 return false;
             else
                 return true;
@@ -357,10 +359,8 @@ namespace IntegrationTests
         [StructLayout(LayoutKind.Explicit)]
         public class ExplicitClass
         {
-            [FieldOffset(3)]
-            public int x;
-            [FieldOffset(4)]
-            public int y;
+            [FieldOffset(3)] public int x;
+            [FieldOffset(4)] public int y;
 
             public ExplicitClass(int x, int y)
             {
@@ -385,10 +385,8 @@ namespace IntegrationTests
         [StructLayout(LayoutKind.Explicit)]
         struct ExplicitStruct
         {
-            [FieldOffset(0)]
-            public int x;
-            [FieldOffset(1)]
-            public int y;
+            [FieldOffset(0)] public int x;
+            [FieldOffset(1)] public int y;
 
             public ExplicitStruct(int x, int y)
             {
@@ -400,10 +398,8 @@ namespace IntegrationTests
         [StructLayout(LayoutKind.Explicit)]
         class ExplicitClassWithStructsInside
         {
-            [FieldOffset(3)]
-            public ExplicitStruct x;
-            [FieldOffset(5)]
-            public SequentialStruct y;
+            [FieldOffset(3)] public ExplicitStruct x;
+            [FieldOffset(5)] public SequentialStruct y;
 
             public ExplicitClassWithStructsInside(ExplicitStruct x, SequentialStruct y)
             {
@@ -428,12 +424,12 @@ namespace IntegrationTests
         [TestSvm(95)]
         public static bool StructInsideArraySymbolicUnsafeRead(int i)
         {
-            var array = new [] {new SequentialStruct(1, 2), new SequentialStruct(3, 4), new SequentialStruct(5, 6)};
+            var array = new[] { new SequentialStruct(1, 2), new SequentialStruct(3, 4), new SequentialStruct(5, 6) };
             long result;
             fixed (SequentialStruct* ptr = &array[0])
             {
-                var ptr2 = (byte*) ptr;
-                var ptr3 = (long*) (ptr2 + i);
+                var ptr2 = (byte*)ptr;
+                var ptr3 = (long*)(ptr2 + i);
                 result = *ptr3;
             }
 
@@ -446,12 +442,12 @@ namespace IntegrationTests
         [TestSvm(95)]
         public static bool StructInsideArraySymbolicUnsafeRead2(int i)
         {
-            var array = new [] {new ExplicitStruct(1, 2), new ExplicitStruct(3, 4), new ExplicitStruct(5, 6)};
+            var array = new[] { new ExplicitStruct(1, 2), new ExplicitStruct(3, 4), new ExplicitStruct(5, 6) };
             long result;
             fixed (ExplicitStruct* ptr = &array[0])
             {
-                var ptr2 = (byte*) ptr;
-                var ptr3 = (long*) (ptr2 + i);
+                var ptr2 = (byte*)ptr;
+                var ptr3 = (long*)(ptr2 + i);
                 result = *ptr3;
             }
 
@@ -470,8 +466,8 @@ namespace IntegrationTests
             long result;
             fixed (ExplicitStruct* ptr = &c.x)
             {
-                var ptr2 = (byte*) ptr;
-                var ptr3 = (long*) (ptr2 + i);
+                var ptr2 = (byte*)ptr;
+                var ptr3 = (long*)(ptr2 + i);
                 result = *ptr3;
             }
 
@@ -490,9 +486,9 @@ namespace IntegrationTests
             long result;
             fixed (SequentialStruct* ptr = &c.x)
             {
-                var ptr2 = (byte*) ptr;
+                var ptr2 = (byte*)ptr;
                 var ptr3 = ptr2 + i;
-                var ptr4 = (long*) ptr3;
+                var ptr4 = (long*)ptr3;
                 result = *ptr4;
             }
 
@@ -509,10 +505,11 @@ namespace IntegrationTests
             byte result;
             fixed (int* ptr = &c.x)
             {
-                var ptr2 = (byte*) ptr;
+                var ptr2 = (byte*)ptr;
                 var ptr3 = ptr2 + i;
                 result = *ptr3;
             }
+
             if (i == -1 && result != 0)
                 return false;
             else
@@ -534,12 +531,12 @@ namespace IntegrationTests
         [TestSvm(96)]
         public static bool StructInsideArraySymbolicUnsafeWrite(int i, SequentialStruct v)
         {
-            var array = new [] {new SequentialStruct(i, i), new SequentialStruct(i, i), new SequentialStruct(i, i)};
+            var array = new[] { new SequentialStruct(i, i), new SequentialStruct(i, i), new SequentialStruct(i, i) };
             fixed (SequentialStruct* ptr = &array[0])
             {
-                var ptr2 = (int*) ptr;
+                var ptr2 = (int*)ptr;
                 var ptr3 = ptr2 + i;
-                var ptr4 = (SequentialStruct*) ptr3;
+                var ptr4 = (SequentialStruct*)ptr3;
                 *ptr4 = v;
             }
 
@@ -556,9 +553,9 @@ namespace IntegrationTests
             long result;
             fixed (char* ptr = &s.AsSpan()[0])
             {
-                var ptr2 = (int*) ptr;
+                var ptr2 = (int*)ptr;
                 var ptr3 = ptr2 + i;
-                var ptr4 = (long*) ptr3;
+                var ptr4 = (long*)ptr3;
                 result = *ptr4;
             }
 
@@ -575,9 +572,9 @@ namespace IntegrationTests
             long result;
             fixed (char* ptr = &s.GetPinnableReference())
             {
-                var ptr2 = (int*) ptr;
+                var ptr2 = (int*)ptr;
                 var ptr3 = ptr2 + i;
-                var ptr4 = (long*) ptr3;
+                var ptr4 = (long*)ptr3;
                 result = *ptr4;
             }
 
@@ -594,9 +591,9 @@ namespace IntegrationTests
             long result;
             fixed (char* ptr = s)
             {
-                var ptr2 = (int*) ptr;
+                var ptr2 = (int*)ptr;
                 var ptr3 = ptr2 + i;
-                var ptr4 = (long*) ptr3;
+                var ptr4 = (long*)ptr3;
                 result = *ptr4;
             }
 
@@ -613,7 +610,7 @@ namespace IntegrationTests
             int result;
             fixed (char* ptr = s)
             {
-                int* p = (int*) ptr;
+                int* p = (int*)ptr;
                 result = p[-1];
             }
 
@@ -626,13 +623,14 @@ namespace IntegrationTests
             var s = "best string";
             fixed (char* ptr = &s.GetPinnableReference())
             {
-                var ptr2 = (int*) ptr;
+                var ptr2 = (int*)ptr;
                 var ptr3 = ptr2 + i;
-                var ptr4 = (long*) ptr3;
+                var ptr4 = (long*)ptr3;
                 *ptr4 = 30962698417209460L;
             }
 
-            if (i == 3 && (s[0] != 'b' || s[1] != 'e' || s[2] != 's' || s[3] != 't' || s[4] != ' ')) // s != "best string"
+            if (i == 3 && (s[0] != 'b' || s[1] != 'e' || s[2] != 's' || s[3] != 't' ||
+                           s[4] != ' ')) // s != "best string"
                 return false;
             else
                 return true;
@@ -660,7 +658,7 @@ namespace IntegrationTests
         [TestSvm]
         public static int UnsafeAs2()
         {
-            var b = new ClassA[]{ new ClassA(), new ClassA(), new ClassA() };
+            var b = new ClassA[] { new ClassA(), new ClassA(), new ClassA() };
             var a = System.Runtime.CompilerServices.Unsafe.As<ClassA[], ClassB[]>(ref b);
             b[0].x = 42;
             return a[0].y;
@@ -669,7 +667,7 @@ namespace IntegrationTests
         [TestSvm(86)]
         public static int UnsafeAs3()
         {
-            var b = new ClassA[]{ new ClassA(), new ClassA(), new ClassA() };
+            var b = new ClassA[] { new ClassA(), new ClassA(), new ClassA() };
             var a = System.Runtime.CompilerServices.Unsafe.As<ClassA[], ClassB[]>(ref b);
             a[0] = new ClassB();
             return 1;
@@ -693,13 +691,14 @@ namespace IntegrationTests
                 var a = System.Runtime.CompilerServices.Unsafe.As<ClassB, ClassA>(ref b);
                 return a.x;
             }
+
             return 331;
         }
 
         [TestSvm]
         public static long UnsafeAs5()
         {
-            var b = new long[]{ 0, 1, 2 };
+            var b = new long[] { 0, 1, 2 };
             var a = System.Runtime.CompilerServices.Unsafe.As<long[], int[]>(ref b);
             a[0] = 10;
             return b[0];
@@ -804,7 +803,7 @@ namespace IntegrationTests
             var p = &a;
             var ptr = (int*)((byte*)p + i);
             var v = *ptr;
-            ptr = (int*)((byte *)p + i);
+            ptr = (int*)((byte*)p + i);
             *ptr = v;
             return *(int*)((byte*)ptr + j);
         }
@@ -838,7 +837,7 @@ namespace IntegrationTests
         public static int EncodeLongToIntReinterpretation(long x)
         {
             int r = *(int*)&x;
-            if (r > 10) return *(int*) &x;
+            if (r > 10) return *(int*)&x;
             return -10;
         }
 
@@ -846,7 +845,7 @@ namespace IntegrationTests
         public static int EncodeDoubleReinterpretation1(double x)
         {
             int r = *(int*)&x;
-            if (r > 10) return *(int*) &x;
+            if (r > 10) return *(int*)&x;
             return -10;
         }
 
@@ -854,7 +853,7 @@ namespace IntegrationTests
         public static int EncodeDoubleReinterpretation2(double x)
         {
             byte* a = (byte*)&x;
-            int y = *(int*) (a + 1); //-219902326
+            int y = *(int*)(a + 1); //-219902326
             if (x == 198.1234 && y != -219902326) return -1;
             return 0;
         }
@@ -863,7 +862,7 @@ namespace IntegrationTests
         public static int EncodeDoubleReinterpretation3(double x)
         {
             byte* a = (byte*)&x;
-            var b = *(long*) a;
+            var b = *(long*)a;
             if (b == 175767216L) return 0;
             return -1;
         }
@@ -872,7 +871,7 @@ namespace IntegrationTests
         public static int EncodeDoubleReinterpretation4(double x)
         {
             byte* a = (byte*)&x + 1;
-            int y = *(int*) a;
+            int y = *(int*)a;
             if (x == 256.0 && y != 0) return -1;
             return 0;
         }
@@ -881,7 +880,7 @@ namespace IntegrationTests
         public static int EncodeDoubleReinterpretation5(double x)
         {
             byte* a = (byte*)&x + 1;
-            int y = *(int*) a;
+            int y = *(int*)a;
             if (x == 3483.34347 && y != -1344582462) return -1;
             return 0;
         }
@@ -890,7 +889,7 @@ namespace IntegrationTests
         public static int EncodeDoubleReinterpretation6(double x)
         {
             byte* a = (byte*)&x + 1;
-            int y = *(int*) a;
+            int y = *(int*)a;
             if (x == 7831.455 && y != 1954210119) return -1;
             return 0;
         }
@@ -900,7 +899,7 @@ namespace IntegrationTests
         {
             fixed (int* p = arr)
             {
-                var ptr = (double*) p;
+                var ptr = (double*)p;
                 if (arr[0] == 1 && arr[1] == 3 && *ptr != 6.3659873734E-314)
                 {
                     return -1;
@@ -914,13 +913,13 @@ namespace IntegrationTests
         public static int ReturnIntFromIntPtr(int myFavouriteParameter)
         {
             var s = new IntPtr(&myFavouriteParameter);
-            return *(int*) s.ToPointer();
+            return *(int*)s.ToPointer();
         }
 
         [Ignore("Insufficient information")]
         public static void* CompilerHackLikePtrReturn(void* ptr)
         {
-            var x = (IntPtr) ptr;
+            var x = (IntPtr)ptr;
             return x.ToPointer();
         }
 
@@ -929,9 +928,9 @@ namespace IntegrationTests
         {
             int* p = &x;
             double* q = &y;
-            long d = (double*) p - q;
+            long d = (double*)p - q;
 
-            return * (int*) (q + d);
+            return *(int*)(q + d);
         }
 
         [Ignore("Idea of symbolic pointer difference is wrong: (p - q) + q != p")]
@@ -975,8 +974,7 @@ namespace IntegrationTests
             }
         }
 
-        [TestSvm(100)]
-        public static bool CheckUnsafeArrayCopy(int offset1, int offset2, int value)
+        private static bool CheckUnsafeArrayCopy(int offset1, int offset2, int value)
         {
             var length = 5;
             if (offset1 < 0 || offset1 >= length || offset2 < 0 || offset2 >= length)
@@ -1007,6 +1005,22 @@ namespace IntegrationTests
             }
 
             return true;
+        }
+
+        [TestSvm(100)]
+        public static bool CheckUnsafeArrayCopy1(int offset1, int offset2, int value)
+        {
+            if (value > 0)
+                return CheckUnsafeArrayCopy(offset1, offset2, value);
+            return false;
+        }
+
+        [Ignore("need 'combine' and 'slice' fixes")]
+        public static bool CheckUnsafeArrayCopy2(int offset1, int offset2, int value)
+        {
+            if (value < 0)
+                return CheckUnsafeArrayCopy(offset1, offset2, value);
+            return false;
         }
     }
 }

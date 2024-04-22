@@ -95,7 +95,7 @@ type private SVMExplorer(explorationOptions: ExplorationOptions, statistics: SVM
                     GuidedSearcher(mkForwardSearcher searchMode, RecursionBasedTargetManager(statistics, options.recThreshold)) :> IForwardSearcher
                 else
                     mkForwardSearcher searchMode
-            BidirectionalSearcher(baseSearcher, BackwardSearcher(), DummyTargetedSearcher.DummyTargetedSearcher()) :> IBidirectionalSearcher
+            BidirectionalSearcher(baseSearcher, DummyTargetedSearcher.DummyTargetedSearcher()) :> IBidirectionalSearcher
         | StackTraceReproductionMode _ -> __notImplemented__()
 
     let releaseBranches() =
@@ -306,22 +306,22 @@ type private SVMExplorer(explorationOptions: ExplorationOptions, statistics: SVM
         if sIsStopped then
             searcher.Remove s
 
-    member private x.Backward p' (s' : cilState) =
-        assert(s'.CurrentLoc = p'.loc)
-        let sLvl = s'.Level
-        if p'.lvl >= sLvl then
-            let lvl = p'.lvl - sLvl
-            let pc = Memory.WLP s'.state p'.pc
-            match isSat pc with
-            | true when not s'.IsIsolated -> searcher.Answer p' (Witnessed s')
-            | true ->
-                statistics.TrackStepBackward p' s'
-                let p = {loc = s'.StartingLoc; lvl = lvl; pc = pc}
-                Logger.trace $"Backward:\nWas: {p'}\nNow: {p}\n\n"
-                Application.addGoal p.loc
-                searcher.UpdatePobs p' p
-            | false ->
-                Logger.trace "UNSAT for pob = %O and s'.PC = %s" p' (API.Print.PrintPC s'.state.pc)
+    // member private x.Backward p' (s' : cilState) =
+    //     assert(s'.CurrentLoc = p'.loc)
+    //     let sLvl = s'.Level
+    //     if p'.lvl >= sLvl then
+    //         let lvl = p'.lvl - sLvl
+    //         let pc = Memory.WLP s'.state p'.pc
+    //         match isSat pc with
+    //         | true when not s'.IsIsolated -> searcher.Answer p' (Witnessed s')
+    //         | true ->
+    //             statistics.TrackStepBackward p' s'
+    //             let p = {loc = s'.StartingLoc; lvl = lvl; pc = pc}
+    //             Logger.trace $"Backward:\nWas: {p'}\nNow: {p}\n\n"
+    //             Application.addGoal p.loc
+    //             searcher.UpdatePobs p' p
+    //         | false ->
+    //             Logger.trace "UNSAT for pob = %O and s'.PC = %s" p' (API.Print.PrintPC s'.state.pc)
 
     member private x.BidirectionalSymbolicExecution() =
         let mutable action = Stop
@@ -340,28 +340,28 @@ type private SVMExplorer(explorationOptions: ExplorationOptions, statistics: SVM
                     x.Forward(s)
                 with
                 | e -> reportStateInternalFail s e
-            | GoBack(s, p) ->
-                try
-                    x.Backward p s
-                with
-                | e -> reportStateInternalFail s e
+            // | GoBack(s, p) ->
+            //     try
+            //         x.Backward p s
+            //     with
+            //     | e -> reportStateInternalFail s e
             | Stop -> __unreachable__()
 
     member private x.AnswerPobs initialStates =
         statistics.ExplorationStarted()
 
         // For backward compatibility. TODO: remove main pobs at all
-        let mainPobs = []
+        // let mainPobs = []
         Application.spawnStates (Seq.cast<_> initialStates)
-        mainPobs |> Seq.map (fun pob -> pob.loc) |> Seq.toArray |> Application.addGoals
-        searcher.Init initialStates mainPobs
+        // mainPobs |> Seq.map (fun pob -> pob.loc) |> Seq.toArray |> Application.addGoals
+        searcher.Init initialStates
         initialStates |> Seq.filter (fun s -> s.IsIIEState) |> Seq.iter reportStateIncomplete
         x.BidirectionalSymbolicExecution()
-        searcher.Statuses() |> Seq.iter (fun (pob, status) ->
-            match status with
-            | pobStatus.Unknown ->
-                Logger.warning $"Unknown status for pob at {pob.loc}"
-            | _ -> ())
+        // searcher.Statuses() |> Seq.iter (fun (pob, status) ->
+        //     match status with
+        //     | pobStatus.Unknown ->
+        //         Logger.warning $"Unknown status for pob at {pob.loc}"
+        //     | _ -> ())
 
     interface IExplorer with
         member x.Reset entryMethods =
@@ -473,7 +473,7 @@ type public Explorer(options : ExplorationOptions, reporter: IReporter) =
         | _ -> None
         try
             if method.ContainsGenericParameters then
-                match SolveGenericMethodParameters state.typeStorage method with
+                match SolveGenericMethodParameters state.pc.TypeConstraints method with
                 | Some(classParams, methodParams) ->
                     let classParams = classParams |> Array.choose getConcreteType
                     let methodParams = methodParams |> Array.choose getConcreteType

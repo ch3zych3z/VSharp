@@ -19,7 +19,7 @@ module internal TestGeneration =
         let m = generationData.method
         let state = Memory.EmptyIsolatedState()
         state.model <- Memory.EmptyModel m
-        state.typeStorage <- generationData.typeStorage
+        state.pc <- PathConstraints(generationData.typeStorage)
 
         let model =
             match state.model with
