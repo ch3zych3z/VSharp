@@ -32,85 +32,12 @@ type TypeMock(supertypes : Type seq) =
     member x.WithSupertypes(supertypes' : Type seq) : unit =
         supertypes <- supertypes'
 
-// ------------------------------------------------- Type constraints -------------------------------------------------
-
-module TypeStorage =
-
-    // TODO: move this to SolverInteraction and parse all pc at once
-    let addTypeConstraints (typesConstraints : typesConstraints) conditions =
-        let equalityConstraints = Dictionary<term, HashSet<Type>>()
-        let supertypeConstraints = Dictionary<term, HashSet<Type>>()
-        let subtypeConstraints = Dictionary<term, HashSet<Type>>()
-        let inequalityConstraints = Dictionary<term, HashSet<Type>>()
-        let notSupertypeConstraints = Dictionary<term, HashSet<Type>>()
-        let notSubtypeConstraints = Dictionary<term, HashSet<Type>>()
-        let addresses = ResizeArray<term>()
-
-        // Creating type constraints from path condition
-        let add (dict : Dictionary<term, HashSet<Type>>) address typ =
-            let types =
-                let types = ref null
-                if dict.TryGetValue(address, types) then types.Value
-                else
-                    let typesSet = HashSet<_>()
-                    dict.Add(address, typesSet)
-                    addresses.Add address
-                    typesSet
-            types.Add typ |> ignore
-
-        let addConstraints _ term next into =
-            match term.term with
-            | Constant(_, TypeCasting.TypeSubtypeTypeSource _, _) ->
-                internalfail "TypeSolver is not fully implemented"
-            | Constant(_, TypeCasting.RefEqTypeSource(address, typ), _) ->
-                add equalityConstraints address typ |> next
-            | Constant(_, TypeCasting.RefSubtypeTypeSource(address, typ), _) ->
-                add supertypeConstraints address typ |> next
-            | Constant(_, TypeCasting.TypeSubtypeRefSource(typ, address), _) ->
-                add subtypeConstraints address typ |> next
-            | Constant(_, TypeCasting.RefSubtypeRefSource _, _) ->
-                internalfail "TypeSolver is not fully implemented"
-            | Negation({term = Constant(_, TypeCasting.TypeSubtypeTypeSource _, _)}) ->
-                internalfail "TypeSolver is not fully implemented"
-            | Negation({term = Constant(_, TypeCasting.RefSubtypeTypeSource(address, typ), _)}) ->
-                add notSupertypeConstraints address typ |> next
-            | Negation({term = Constant(_, TypeCasting.RefEqTypeSource(address, typ), _)}) ->
-                add inequalityConstraints address typ |> next
-            | Negation({term = Constant(_, TypeCasting.TypeSubtypeRefSource(typ, address), _)}) ->
-                add notSubtypeConstraints address typ |> next
-            | Negation({term = Constant(_, TypeCasting.RefSubtypeRefSource _, _)}) ->
-                internalfail "TypeSolver is not fully implemented"
-            | Constant(_, (Memory.HeapAddressSource _ as source), _)
-            | Constant(_, (Memory.PointerAddressSource _ as source), _) ->
-                // Adding super types from testing function info
-                add supertypeConstraints term source.TypeOfLocation |> next
-            | _ -> into ()
-        iterSeq addConstraints conditions
-
-        let toList (d : Dictionary<term, HashSet<Type>>) address =
-            let set = ref null
-            if d.TryGetValue(address, set) then List.ofSeq set.Value
-            else List.empty
-        // Adding type constraints
-        for address in addresses do
-            let typeConstraints =
-                typeConstraints.Create
-                    (toList equalityConstraints address)
-                    (toList supertypeConstraints address)
-                    (toList subtypeConstraints address)
-                    (toList inequalityConstraints address)
-                    (toList notSupertypeConstraints address)
-                    (toList notSubtypeConstraints address)
-            typesConstraints.Add address typeConstraints
-
-    // let addTypeConstraint (typesConstraints : typesConstraints) condition =
-    //     List.singleton condition |> addTypeConstraints typesConstraints
-
 // ------------------------------------------------- Type solver core -------------------------------------------------
 
 type typeSolvingResult =
     | TypeSat
     | TypeUnsat
+    | TypeUnsatWithCore of term list
 
 module TypeSolver =
 
@@ -541,46 +468,134 @@ module TypeSolver =
             resultConstraints.Merge constraints |> ignore
         resultConstraints
 
-    let private evalInModel model (typeStorage : ITypeConstraints) =
-        // Clustering addresses, which are equal in model
-        let eqInModel = Dictionary<concreteHeapAddress, List<term>>()
+    type private concreteAddressCluster = {
+        addresses : Dictionary<term, List<term * bool>>
+    }
+    with
+        static member Empty() = {
+            addresses = Dictionary()
+        }
+
+        member private x.Item address =
+            let found, context = x.addresses.TryGetValue(address)
+            if found then context
+            else
+                let context = List()
+                x.addresses.Add(address, context)
+                context
+
+        member x.AddAddress address =
+            x[address] |> ignore
+
+        member x.AddCondition address condition =
+            x[address].Add(condition)
+
+    let private clusterizeAddresses model (typeStorage : ITypeConstraints) query =
+        let eqInModel = Dictionary<concreteHeapAddress, concreteAddressCluster>()
         let addressesTypes = typeStorage.AddressesTypes
-        for entry in addressesTypes do
-            let address = entry.Key
+
+        let addNotNullAddressToClusterk address k =
             let concreteAddress = addressInModel model address
             if concreteAddress <> VectorTime.zero then
-                let current = ref null
-                if eqInModel.TryGetValue(concreteAddress, current) then
-                    let same = current.Value
-                    same.Add(address)
+                let found, cluster = eqInModel.TryGetValue(concreteAddress)
+                let mutable cluster = cluster
+                if found then
+                    cluster.AddAddress address
                 else
-                    let same = List()
-                    same.Add(address)
-                    eqInModel.Add(concreteAddress, same)
+                    cluster <- concreteAddressCluster.Empty()
+                    cluster.AddAddress address
+                    eqInModel.Add(concreteAddress, cluster)
+                k cluster
 
-        // Intersecting type candidates for same addresses in model
-        let evaledTypes = Dictionary<concreteHeapAddress, symbolicType>()
+        // Clustering known addresses
+        for KeyValue(address, _) in addressesTypes do
+            addNotNullAddressToClusterk address ignore
+
+        // Clustering addresses from query
+        for condition, holds in query do
+            match condition.term with
+            | TypeConstraints.Supertype(address, _)
+            | TypeConstraints.Subtype(address, _)
+            | TypeConstraints.Equality(address, _) ->
+                addNotNullAddressToClusterk address <| fun cluster ->
+                    cluster.AddCondition address (condition, holds)
+            | _ -> internalfail $"[Type solver] Unexpected query condition {condition.term}"
+
+        eqInModel
+
+    let private getConstraintsFromContext context =
+        let result = TypeConstraints.parse context
+        assert(result.notParsed.Count = 0)
+        assert(result.constraints.Count <= 1)
+        match Seq.tryHead result.constraints with
+        | Some(KeyValue(_, constraints)) -> constraints
+        | None -> typeConstraints.Empty
+
+    let private solveClusterType (typeStorage : ITypeConstraints) cluster (conflictLemmas : List<term>) =
+        assert(cluster.addresses.Count <> 0)
+        let potentialConflictingAddresses = List<term>()
+        let potentialConflictingConditions = List<term>()
         let constraints = typeStorage.Constraints
+        let addressesTypes = typeStorage.AddressesTypes
+        let mutable currentCandidates = None
+        let mutable currentConstraints = typeConstraints.Empty
+
         // Configuring 'getMock' to create only new mocks (not refining existing)
         let getMock _ supertypes = getMock typeStorage.TypeMocks None supertypes
-        for entry in eqInModel do
-            let same = entry.Value
-            let evaledType =
-                let address = Seq.head same
-                let candidates = addressesTypes[address]
-                assert(candidates.IsEmpty |> not)
-                if same.Count > 1 then
-                    let merged = mergeConstraints constraints same
-                    let refined = refineCandidates getMock merged candidates
-                    assert(refined.IsEmpty |> not)
-                    refined.Pick()
-                else candidates.Pick()
-            evaledTypes.Add(entry.Key, evaledType)
-        evaledTypes
+
+        for KeyValue(address, context) in cluster.addresses do
+            let candidates =
+                match currentCandidates with
+                | None ->
+                    currentConstraints <- constraints[address].Copy()
+                    addressesTypes[address]
+                | Some candidates -> candidates
+
+            let evaledContext = [
+                for condition, holds in context do
+                    yield if holds then condition else !!condition
+            ]
+            let contextConstraints = getConstraintsFromContext evaledContext
+            contextConstraints.Merge constraints[address] |> ignore // now 'contextConstraints' contains both context and 'address' constraints
+            let constraintsChanged = currentConstraints.Merge contextConstraints
+
+            let candidates =
+                if constraintsChanged then
+                    // 'candidates' already satisfies currentConstraints maybe except context and 'address' constraints
+                    // thus, candidates is refined only with them
+                    refineCandidates getMock contextConstraints candidates
+                else candidates
+
+            if candidates.IsEmpty then
+                let disjunct = List()
+                for conflictingAddress in potentialConflictingAddresses do
+                    disjunct.Add(!!(address === conflictingAddress))
+                    disjunct.Add(conflictingAddress === zeroAddress())
+                disjunct.Add(address === zeroAddress())
+
+                for condition in potentialConflictingConditions do
+                    disjunct.Add(!!condition)
+                for condition in evaledContext do
+                    disjunct.Add(!!condition)
+                conflictLemmas.Add(disjunction disjunct)
+
+                currentCandidates <- addressesTypes[address] |> Some
+                currentConstraints <- constraints[address].Copy()
+                potentialConflictingConditions.Clear()
+                potentialConflictingAddresses.Clear()
+                potentialConflictingAddresses.Add(address)
+            else
+                // TODO: there could be some heuristics but it's impossible without candidates comparison
+                potentialConflictingAddresses.Add(address)
+                potentialConflictingConditions.AddRange(evaledContext)
+                currentCandidates <- Some candidates
+
+        currentCandidates.Value.Pick()
 
     let private solveTypesWithoutModel (state : state) =
         let m = CallStack.stackTrace state.memory.Stack |> List.last
         userAssembly <- Some m.DeclaringType.Assembly
+        // TODO: solving generic parameters every time may lead to a bug
         let typeParams, methodParams = getGenericParameters m
         let typeStorage = state.pc.TypeConstraints
         let getMock = getMock typeStorage.TypeMocks
@@ -612,27 +627,59 @@ module TypeSolver =
             match solveTypesWithoutModel state with
             | TypeSat -> checkInequalityViaCandidates typeStorage
             | TypeUnsat -> None
+            | _ -> internalfail "[Type solver] Unexpected unsat core when solving without model"
 
-    let private refineTypesInModel model (typeStorage : ITypeConstraints) =
+    let private refineTypesInModel model concreteAddressToType =
         match model with
         | StateModel modelState ->
-            for entry in evalInModel model typeStorage do
-                let address = entry.Key
-                let typeForModel = entry.Value
+            for address, typeForModel in concreteAddressToType do
                 let memory = modelState.memory
                 memory.AllocatedTypes <- PersistentDict.add address typeForModel memory.AllocatedTypes
         | PrimitiveModel _ -> internalfail "Refining types in model: got primitive model"
 
-    let solveTypes (model : model) (state : state) =
+    let private isNullInModel model address =
+        addressInModel model address = VectorTime.zero
+
+    let private findNullConflicts (model : model) query (conflictLemmas : List<term>) =
+        for condition, holds in query do
+            match condition.term with
+            | TypeConstraints.Equality(address, _) when holds && isNullInModel model address ->
+                !!(address === zeroAddress()) ||| !!condition
+                |> conflictLemmas.Add
+            | TypeConstraints.Supertype(address, _) when not holds && isNullInModel model address ->
+                !!(address === zeroAddress()) ||| condition
+                |> conflictLemmas.Add
+            | TypeConstraints.Subtype(address, _) when holds && isNullInModel model address ->
+                !!(address === zeroAddress()) ||| !!condition
+                |> conflictLemmas.Add
+            | _ -> ()
+
+    let solveTypes (model : model) (state : state) query =
         let result = solveTypesWithoutModel state
         match result with
-        | TypeSat -> refineTypesInModel model state.pc.TypeConstraints
-        | _ -> ()
-        result
+        | TypeSat ->
+            let typeStorage = state.pc.TypeConstraints
+            let conflictLemmas = List()
+            findNullConflicts model query conflictLemmas
+
+            let concreteAddressToCluster = clusterizeAddresses model typeStorage query
+            let concreteAddressToType = List()
+            for KeyValue(concreteAddress, cluster) in concreteAddressToCluster do
+                let typeForModel = solveClusterType typeStorage cluster conflictLemmas
+                concreteAddressToType.Add(concreteAddress, typeForModel)
+
+            if conflictLemmas.Count <> 0 then
+                conflictLemmas |> List.ofSeq |> TypeUnsatWithCore
+            else
+                refineTypesInModel model concreteAddressToType
+                TypeSat
+        | _ -> TypeUnsat
 
     let refineTypes (state : state) =
-        match solveTypes state.model state with
+        // match solveTypes state.model state List.empty with
+        match solveTypesWithoutModel state with
         | TypeSat -> ()
+        | TypeUnsatWithCore _
         | TypeUnsat -> internalfail "Refining types: branch is unreachable"
 
     let keepOnlyMock state thisRef =
@@ -645,6 +692,15 @@ module TypeSolver =
                 typeStorage[thisAddress] <- candidates.KeepOnlyMock()
             | None -> ()
         | _ -> ()
+
+    let private refineCallVirtModel (model : model) (typeStorage : ITypeConstraints) (thisAddress : heapAddress) =
+        let clusters = clusterizeAddresses model typeStorage Seq.empty
+        let concreteThisAddress = addressInModel model thisAddress
+        let thisAddressCluster = clusters[concreteThisAddress]
+        let conflictLemmas = List()
+        let typeForModel = solveClusterType typeStorage thisAddressCluster conflictLemmas
+        assert(conflictLemmas.Count = 0)
+        List.singleton (concreteThisAddress, typeForModel) |> refineTypesInModel model
 
     let getCallVirtCandidates state (thisRef : heapAddress) (thisType : Type) (ancestorMethod : IMethod) =
         userAssembly <- Some ancestorMethod.DeclaringType.Assembly
@@ -684,7 +740,7 @@ module TypeSolver =
                 let distinct = filtered.DistinctBy(resolveOverride)
                 let truncated = distinct.Take(5).Eval()
                 typeStorage[thisAddress] <- truncated
-                refineTypesInModel state.model typeStorage
+                refineCallVirtModel state.model typeStorage thisAddress
                 truncated.Types
             | TypeUnsat -> Seq.empty
         | Ref address when ancestorMethod.IsImplementedInType thisType ->

@@ -239,6 +239,12 @@ with
     member x.AddNotSupertype(notSupertype : Type) =
         x.notSupertypes <- notSupertype :: x.notSupertypes |> List.distinct
 
+    member x.AddNotSubtype(notSubtype : Type) =
+        x.notSubtypes <- notSubtype :: x.notSubtypes |> List.distinct
+
+    member x.AddNotEqual(notEqual : Type) =
+        x.notEqual <- notEqual :: x.notEqual |> List.distinct
+
     member x.IsSuitable substitute (candidate : Type) =
         // TODO: need to find subst to generic parameters satisfying constraints
         x.equal |> List.forall (fun t -> candidate = (substitute t)) &&

@@ -298,7 +298,6 @@ and IMemory =
 and
     [<ReferenceEquality>]
     state = {
-        // mutable pc : pathCondition
         mutable pc : PathConstraints
         mutable initializedTypes : symbolicTypeSet                         // Types with initialized static members
         mutable typeVariables : typeVariables                              // Type variables assignment in the current state

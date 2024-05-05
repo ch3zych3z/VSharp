@@ -5,6 +5,111 @@ open System.Collections.Generic
 
 open VSharp
 
+module TypeConstraints =
+    let (|Supertype|_|) term =
+        match term with
+        | Constant(_, TypeCasting.RefSubtypeTypeSource(address, typ), _) -> Supertype(address, typ) |> Some
+        | _ -> None
+
+    let (|Subtype|_|) term =
+        match term with
+        | Constant(_, TypeCasting.TypeSubtypeRefSource(typ, address), _) -> Subtype(address, typ) |> Some
+        | _ -> None
+
+    let (|Equality|_|) term =
+        match term with
+        | Constant(_, TypeCasting.RefEqTypeSource(address, typ), _) -> Equality(address, typ) |> Some
+        | _ -> None
+
+    let isTypeConstraint term =
+        match term.term with
+        | Supertype _
+        | Subtype _
+        | Equality _ -> true
+        | _ -> false
+
+    type parsingResult = {
+        parsed : List<term>
+        notParsed : List<term>
+        constraints : Dictionary<term, typeConstraints>
+    }
+
+    let parse conditions =
+        let parsed = List<term>()
+        let notParsed = List<term>()
+        let constraints = Dictionary<term, typeConstraints>()
+
+        let equalityConstraints = Dictionary<term, HashSet<Type>>()
+        let supertypeConstraints = Dictionary<term, HashSet<Type>>()
+        let subtypeConstraints = Dictionary<term, HashSet<Type>>()
+        let inequalityConstraints = Dictionary<term, HashSet<Type>>()
+        let notSupertypeConstraints = Dictionary<term, HashSet<Type>>()
+        let notSubtypeConstraints = Dictionary<term, HashSet<Type>>()
+        let addresses = ResizeArray<term>()
+
+        // Creating type constraints from conditions
+        let add (dict : Dictionary<term, HashSet<Type>>) address typ =
+            let types =
+                let types = ref null
+                if dict.TryGetValue(address, types) then types.Value
+                else
+                    let typesSet = HashSet<_>()
+                    dict.Add(address, typesSet)
+                    addresses.Add address
+                    typesSet
+            types.Add typ |> ignore
+
+        for condition in conditions do
+            let mutable isParsed = true
+            match condition.term with
+            | Constant(_, TypeCasting.TypeSubtypeTypeSource _, _) ->
+                internalfail "TypeSolver is not fully implemented"
+            | Equality(address, typ) ->
+                add equalityConstraints address typ
+            | Supertype(address, typ) ->
+                add supertypeConstraints address typ
+            | Subtype(address, typ) ->
+                add subtypeConstraints address typ
+            | Constant(_, TypeCasting.RefSubtypeRefSource _, _) ->
+                internalfail "TypeSolver is not fully implemented"
+            | Negation({term = Constant(_, TypeCasting.TypeSubtypeTypeSource _, _)}) ->
+                internalfail "TypeSolver is not fully implemented"
+            | Negation({term = Supertype(address, typ)}) ->
+                add notSupertypeConstraints address typ
+            | Negation({term = Equality(address, typ)}) ->
+                add inequalityConstraints address typ
+            | Negation({term = Subtype(address, typ)}) ->
+                add notSubtypeConstraints address typ
+            | Negation({term = Constant(_, TypeCasting.RefSubtypeRefSource _, _)}) ->
+                internalfail "TypeSolver is not fully implemented"
+            | _ -> isParsed <- false
+
+            if isParsed then
+                parsed.Add(condition)
+            else notParsed.Add(condition)
+
+        let toList (d : Dictionary<term, HashSet<Type>>) address =
+            let set = ref null
+            if d.TryGetValue(address, set) then List.ofSeq set.Value
+            else List.empty
+        // Adding type constraints
+        for address in addresses do
+            let typeConstraints =
+                typeConstraints.Create
+                    (toList equalityConstraints address)
+                    (toList supertypeConstraints address)
+                    (toList subtypeConstraints address)
+                    (toList inequalityConstraints address)
+                    (toList notSupertypeConstraints address)
+                    (toList notSubtypeConstraints address)
+            constraints.Add(address, typeConstraints)
+
+        {
+            parsed = parsed
+            notParsed = notParsed
+            constraints = constraints
+        }
+
 type typeStorage private (conditions, constraints, addressesTypes, typeMocks, classesParams, methodsParams) =
     let mutable classesParams = classesParams
     let mutable methodsParams = methodsParams
@@ -57,75 +162,13 @@ type typeStorage private (conditions, constraints, addressesTypes, typeMocks, cl
         constraints.AddSuperType address supertype
 
     member x.AddConditions newConditions =
-        let equalityConstraints = Dictionary<term, HashSet<Type>>()
-        let supertypeConstraints = Dictionary<term, HashSet<Type>>()
-        let subtypeConstraints = Dictionary<term, HashSet<Type>>()
-        let inequalityConstraints = Dictionary<term, HashSet<Type>>()
-        let notSupertypeConstraints = Dictionary<term, HashSet<Type>>()
-        let notSubtypeConstraints = Dictionary<term, HashSet<Type>>()
-        let addresses = ResizeArray<term>()
+        let result = TypeConstraints.parse newConditions
+        conditions <- Seq.fold Conditions.add conditions result.parsed
 
-        // Creating type constraints from path condition
-        let add (dict : Dictionary<term, HashSet<Type>>) address typ =
-            let types =
-                let types = ref null
-                if dict.TryGetValue(address, types) then types.Value
-                else
-                    let typesSet = HashSet<_>()
-                    dict.Add(address, typesSet)
-                    addresses.Add address
-                    typesSet
-            types.Add typ |> ignore
+        for KeyValue(address, typeConstraint) in result.constraints do
+            constraints.Add address typeConstraint
 
-        let parseConstraints notParsed condition =
-            let mutable isParsed = true
-            match condition.term with
-            | Constant(_, TypeCasting.TypeSubtypeTypeSource _, _) ->
-                internalfail "TypeSolver is not fully implemented"
-            | Constant(_, TypeCasting.RefEqTypeSource(address, typ), _) ->
-                add equalityConstraints address typ
-            | Constant(_, TypeCasting.RefSubtypeTypeSource(address, typ), _) ->
-                add supertypeConstraints address typ
-            | Constant(_, TypeCasting.TypeSubtypeRefSource(typ, address), _) ->
-                add subtypeConstraints address typ
-            | Constant(_, TypeCasting.RefSubtypeRefSource _, _) ->
-                internalfail "TypeSolver is not fully implemented"
-            | Negation({term = Constant(_, TypeCasting.TypeSubtypeTypeSource _, _)}) ->
-                internalfail "TypeSolver is not fully implemented"
-            | Negation({term = Constant(_, TypeCasting.RefSubtypeTypeSource(address, typ), _)}) ->
-                add notSupertypeConstraints address typ
-            | Negation({term = Constant(_, TypeCasting.RefEqTypeSource(address, typ), _)}) ->
-                add inequalityConstraints address typ
-            | Negation({term = Constant(_, TypeCasting.TypeSubtypeRefSource(typ, address), _)}) ->
-                add notSubtypeConstraints address typ
-            | Negation({term = Constant(_, TypeCasting.RefSubtypeRefSource _, _)}) ->
-                internalfail "TypeSolver is not fully implemented"
-            | _ -> isParsed <- false
-
-            if isParsed then
-                conditions <- Conditions.add conditions condition
-                notParsed
-            else condition :: notParsed
-
-        let notParsed = List.fold parseConstraints [] newConditions
-
-        let toList (d : Dictionary<term, HashSet<Type>>) address =
-            let set = ref null
-            if d.TryGetValue(address, set) then List.ofSeq set.Value
-            else List.empty
-        // Adding type constraints
-        for address in addresses do
-            let typeConstraints =
-                typeConstraints.Create
-                    (toList equalityConstraints address)
-                    (toList supertypeConstraints address)
-                    (toList subtypeConstraints address)
-                    (toList inequalityConstraints address)
-                    (toList notSupertypeConstraints address)
-                    (toList notSubtypeConstraints address)
-            constraints.Add address typeConstraints
-
-        notParsed
+        result.notParsed |> List.ofSeq
 
     member x.Item
         with get (address : term) =

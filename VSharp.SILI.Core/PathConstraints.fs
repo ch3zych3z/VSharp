@@ -88,6 +88,12 @@ type PathConstraints private (
             yield! Conditions.toSeq logicalConstraints
         }
 
+    member x.SolverConditions with get() =
+        seq {
+            yield! Conditions.toSeq equalityConstraints.Conditions
+            yield! Conditions.toSeq logicalConstraints
+        }
+
     member x.TypeConstraints with get() = typeConstraints
 
     member x.PathCondition with get() = pathCondition

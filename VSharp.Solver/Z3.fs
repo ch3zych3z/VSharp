@@ -117,6 +117,7 @@ module internal Z3 =
         regionConstants : Dictionary<regionSort * path, ArrayExpr>
         regionAccesses : Dictionary<regionSort * path, HashSet<Expr[]>>
         funcDecls : IDictionary<string * Sort[] * Sort, FuncDecl>
+        typeConstraints : List<term>
         mutable lastSymbolicAddress : int32
     } with
         member x.Get(term, encoder : unit -> Expr) =
@@ -141,6 +142,7 @@ module internal Z3 =
         regionConstants = Dictionary<regionSort * path, ArrayExpr>()
         regionAccesses = Dictionary<regionSort * path, HashSet<Expr[]>>()
         funcDecls = Dictionary<string * Sort[] * Sort, FuncDecl>()
+        typeConstraints = List<term>()
         lastSymbolicAddress = 0
     }
 
@@ -560,7 +562,10 @@ module internal Z3 =
                 let result =
                     match t.term with
                     | Concrete(obj, typ) -> x.EncodeConcrete obj typ
-                    | Constant(name, source, typ) -> x.EncodeConstant name.v source typ
+                    | Constant(name, source, typ) ->
+                        if IsTypeConstraint t then
+                            encodingCache.typeConstraints.Add(t)
+                        x.EncodeConstant name.v source typ
                     | Expression(op, args, typ) -> x.EncodeExpression t op args typ
                     | HeapRef(address, _) -> x.EncodeTerm address
                     | _ -> internalfail $"EncodeTerm: unexpected term: {t}"
@@ -1286,6 +1291,14 @@ module internal Z3 =
             | StackBufferSort key -> Memory.FillStackBufferRegion state key constantValue
             | BoxedSort typ -> Memory.FillBoxedRegion state typ constantValue
 
+        member x.ExtractTypeConstraints (m : Model) = [
+                for t in encodingCache.typeConstraints do
+                    let expr = encodingCache.t2e[t]
+                    let refinedExpr = m.Eval(expr.expr, false)
+                    assert (refinedExpr.IsTrue || not refinedExpr.IsFalse)
+                    yield t, refinedExpr.IsTrue
+            ]
+
         member x.MkModel (m : Model) =
             try
                 let stackEntries = Dictionary<stackKey, term ref>()
@@ -1453,7 +1466,8 @@ module internal Z3 =
                             Logger.trace "SATISFIABLE"
                             let z3Model = solver.Model
                             let model = builder.MkModel z3Model
-                            SmtSat { mdl = model }
+                            let typeConstraints = builder.ExtractTypeConstraints z3Model
+                            SmtSat { mdl = model; typeConstraints = typeConstraints }
                         | Status.UNSATISFIABLE ->
                             Logger.trace "UNSATISFIABLE"
                             SmtUnsat { core = Array.empty (*optCtx.UnsatCore |> Array.map (builder.Decode Bool)*) }
@@ -1471,11 +1485,36 @@ module internal Z3 =
                 finally
                     builder.Reset()
 
+            member x.Check() =
+                let result = solver.Check()
+                match result with
+                | Status.SATISFIABLE ->
+                    Logger.trace "SATISFIABLE"
+                    let z3Model = solver.Model
+                    let model = builder.MkModel z3Model
+                    let typeConstraints = builder.ExtractTypeConstraints z3Model
+                    SmtSat { mdl = model; typeConstraints = typeConstraints }
+                | Status.UNSATISFIABLE ->
+                    Logger.trace "UNSATISFIABLE"
+                    SmtUnsat { core = Array.empty }
+                | Status.UNKNOWN ->
+                    Logger.error $"Solver returned Status.UNKNOWN. Reason: {solver.ReasonUnknown}"
+                    Logger.trace "UNKNOWN"
+                    SmtUnknown solver.ReasonUnknown
+                | _ -> __unreachable__()
+
             member x.Assert (fml : term) =
                 Logger.printLogLazy Logger.Trace "SOLVER: Asserting: %s" (lazy fml.ToString())
                 let encoded = builder.EncodeTerm fml
                 let encoded = List.fold (fun acc x -> builder.MkAnd(acc, x)) (encoded.expr :?> BoolExpr) encoded.assumptions
                 solver.Assert(encoded)
+
+            member x.Push() =
+                solver.Push()
+                builder.Reset()
+
+            member x.Pop() =
+                solver.Pop(1u)
 
             member x.SetMaxBufferSize size =
                 builder.SetMaxBufferSize size

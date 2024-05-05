@@ -42,7 +42,6 @@ module internal Branching =
         conditionInvocation state (fun (condition, conditionState) ->
         let pc = state.pc
         assert(pc.Conditions |> conjunction |> state.model.Eval |> isTrue)
-        // let typeStorage = conditionState.typeStorage
         let evaled = state.model.Eval condition
         let notCondition = !!condition
         if isTrue evaled then
@@ -53,22 +52,16 @@ module internal Branching =
             if elsePc.IsFalse then
                 thenBranch conditionState (List.singleton >> k)
             elif not branchesReleased then
-                // let typeStorageCopy = typeStorage.Copy()
                 conditionState.pc <- elsePc
-                // TypeStorage.addTypeConstraint typeStorage.Constraints notCondition
                 match checkSat conditionState with
                 | SolverInteraction.SmtUnsat _ ->
                     conditionState.pc <- thenPc
                     conditionState.pc.AddCondition condition
-                    // TypeStorage.addTypeConstraint typeStorageCopy.Constraints condition
-                    // conditionState.typeStorage <- typeStorageCopy
                     TypeSolver.refineTypes conditionState
                     thenBranch conditionState (List.singleton >> k)
                 | SolverInteraction.SmtUnknown _ ->
                     conditionState.pc <- thenPc
                     conditionState.pc.AddCondition condition
-                    // TypeStorage.addTypeConstraint typeStorageCopy.Constraints condition
-                    // conditionState.typeStorage <- typeStorageCopy
                     TypeSolver.refineTypes conditionState
                     thenBranch conditionState (List.singleton >> k)
                 | SolverInteraction.SmtSat model ->
@@ -76,17 +69,12 @@ module internal Branching =
                     thenState.pc <- thenPc
                     let elseState = conditionState.Copy elsePc
                     elseState.model <- model.mdl
-
                     assert(elsePc.Conditions |> conjunction |> elseState.model.Eval |> isTrue)
                     thenState.pc.AddCondition condition
-                    // TypeStorage.addTypeConstraint typeStorageCopy.Constraints condition
-                    // thenState.typeStorage <- typeStorageCopy
                     TypeSolver.refineTypes thenState
                     execution thenState elseState condition k
             else
-                // conditionState.pc <- thenPc
                 conditionState.pc.AddCondition condition
-                // TypeStorage.addTypeConstraint typeStorage.Constraints condition
                 thenBranch conditionState (List.singleton >> k)
         elif isFalse evaled then
             assert(state.model.Eval notCondition |> isTrue)
@@ -96,21 +84,16 @@ module internal Branching =
             if thenPc.IsFalse then
                 elseBranch conditionState (List.singleton >> k)
             elif not branchesReleased then
-                // let typeStorageCopy = typeStorage.Copy()
                 conditionState.pc <- thenPc
-                // TypeStorage.addTypeConstraint typeStorage.Constraints condition
                 match checkSat conditionState with
                 | SolverInteraction.SmtUnsat _ ->
                     conditionState.pc <- elsePc
                     conditionState.pc.AddCondition notCondition
-                    // conditionState.typeStorage <- typeStorageCopy
                     TypeSolver.refineTypes conditionState
                     elseBranch conditionState (List.singleton >> k)
                 | SolverInteraction.SmtUnknown _ ->
                     conditionState.pc <- elsePc
                     conditionState.pc.AddCondition notCondition
-                    // TypeStorage.addTypeConstraint typeStorageCopy.Constraints notCondition
-                    // conditionState.typeStorage <- typeStorageCopy
                     TypeSolver.refineTypes conditionState
                     elseBranch conditionState (List.singleton >> k)
                 | SolverInteraction.SmtSat model ->
@@ -119,14 +102,11 @@ module internal Branching =
                     elsePc.AddCondition notCondition
                     thenState.model <- model.mdl
                     assert(thenPc.Conditions |> conjunction |> thenState.model.Eval |> isTrue)
-                    // TypeStorage.addTypeConstraint typeStorageCopy.Constraints notCondition
-                    // elseState.typeStorage <- typeStorageCopy
                     TypeSolver.refineTypes elseState
                     execution thenState elseState condition k
             else
                 conditionState.pc <- elsePc
                 elsePc.AddCondition notCondition
-                // TypeStorage.addTypeConstraint typeStorage.Constraints notCondition
                 elseBranch conditionState (List.singleton >> k)
         else __unreachable__())
 

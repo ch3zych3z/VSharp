@@ -58,9 +58,10 @@ module API =
             let constraints = List.singleton t |> typeConstraints.FromSuperTypes
             // TODO: add 'isPublic' constraint, because 'this' may be rendered only with public type
             state.pc.TypeConstraints.AddConstraint address constraints
-            match TypeSolver.solveTypes state.model state with
+            match TypeSolver.solveTypes state.model state List.empty with
             | TypeSat -> ()
             | TypeUnsat -> __insufficientInformation__ "SolveThisType: cannot find non-abstract type for 'this'"
+            | TypeUnsatWithCore _ -> internalfail "unexpected unsat core when solving this type"
         | Ref _ -> ()
         | _ -> internalfail $"unexpected this {ref}"
 
@@ -248,6 +249,8 @@ module API =
         let SpecializeWithKey constant key writeKey = Memory.specializeWithKey constant key writeKey
 
         let HeapReferenceToBoxReference reference = Memory.heapReferenceToBoxReference reference
+
+        let IsTypeConstraint term = TypeConstraints.isTypeConstraint term
 
         let AddConstraint (conditionState : state) condition =
             conditionState.AddConstraint condition

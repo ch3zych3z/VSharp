@@ -148,6 +148,7 @@ module API =
 
         val HeapReferenceToBoxReference : term -> term
 
+        val IsTypeConstraint : term -> bool
         val AddConstraint : state -> term -> unit
         val IsFalsePathCondition : state -> bool
         val Contradicts : state -> term -> bool
